@@ -23,6 +23,7 @@ fi
 AC_CONFIG_FILES([
 Makefile
 src/Makefile
+examples/Makefile.PL
 ])
 AC_OUTPUT
 
