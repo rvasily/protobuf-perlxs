@@ -1,0 +1,5 @@
+* Working examples
+* Synopsis sections for serializing and unserializing messages
+* to_hashref, from_hashref
+* Passing hashref or other instance of class as constructor argument
+* Extensions
