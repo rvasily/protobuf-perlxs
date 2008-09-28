@@ -13,41 +13,6 @@ extern string StringReplace(const string& s, const string& oldsub,
 namespace compiler {
 namespace perlxs {
 
-string
-CamelCase(const string& input)
-{
-  string result;
-  bool cap_next_letter = true;
-  // Note:  I distrust ctype.h due to locales.
-  for (int i = 0; i < input.size(); i++) {
-    if ('a' <= input[i] && input[i] <= 'z') {
-      if (cap_next_letter) {
-        result += input[i] + ('A' - 'a');
-      } else {
-        result += input[i];
-      }
-      cap_next_letter = false;
-    } else if ('A' <= input[i] && input[i] <= 'Z') {
-      if (i == 0 && !cap_next_letter) {
-        // Force first letter to lower-case unless explicitly told to
-        // capitalize it.
-        result += input[i] + ('a' - 'A');
-      } else {
-        // Capital letters after the first are left as-is.
-        result += input[i];
-      }
-      cap_next_letter = false;
-    } else if ('0' <= input[i] && input[i] <= '9' || 
-	       input[i] == '.' || input[i] == ':') {
-      result += input[i];
-      cap_next_letter = true;
-    } else {
-      cap_next_letter = true;
-    }
-  }
-  return result;
-}
-
 
 string
 TypemapName(const Descriptor* descriptor)
@@ -85,7 +50,7 @@ MessageClassName(const Descriptor* descriptor)
 {
   string classname = descriptor->full_name();
 
-  classname = CamelCase(StringReplace(classname, ".", "::", true));
+  classname = StringReplace(classname, ".", "::", true);
 
   return classname;
 }
@@ -97,7 +62,7 @@ EnumClassName(const EnumDescriptor* descriptor)
 {
   string classname = descriptor->full_name();
 
-  classname = CamelCase(StringReplace(classname, ".", "::", true));
+  classname = StringReplace(classname, ".", "::", true);
 
   return classname;
 }

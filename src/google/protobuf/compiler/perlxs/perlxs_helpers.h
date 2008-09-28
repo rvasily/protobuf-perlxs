@@ -13,10 +13,6 @@ namespace io { class Printer; }
 namespace compiler {
 namespace perlxs {
 
-// Converts the field's name to camel-case, e.g. "foo_bar_baz" becomes
-// "FooBarBaz".
-string CamelCase(const string& input);
-
 // Returns the name used in the typemap.
 string TypemapName(const Descriptor* descriptor);
 

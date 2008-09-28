@@ -68,7 +68,7 @@ void
 PerlXSGenerator::GenerateMessageXS(const Descriptor* descriptor,
 				   OutputDirectory* outdir) const
 {
-  string filename = CamelCase(descriptor->name()) + ".xs";
+  string filename = descriptor->name() + ".xs";
   scoped_ptr<io::ZeroCopyOutputStream> output(outdir->Open(filename));
   io::Printer printer(output.get(), '$'); // '$' works well in the .xs file
 
@@ -117,7 +117,7 @@ void
 PerlXSGenerator::GenerateMessageModule(const Descriptor* descriptor,
 				       OutputDirectory* outdir) const
 {
-  string filename = CamelCase(descriptor->name()) + ".pm";
+  string filename = descriptor->name() + ".pm";
   scoped_ptr<io::ZeroCopyOutputStream> output(outdir->Open(filename));
   io::Printer printer(output.get(), '*'); // '*' works well in the .pm file
 
@@ -460,7 +460,7 @@ void
 PerlXSGenerator::GenerateEnumModule(const EnumDescriptor* enum_descriptor,
 				    OutputDirectory* outdir) const
 {
-  string filename = CamelCase(enum_descriptor->name()) + ".pm";
+  string filename = enum_descriptor->name() + ".pm";
   scoped_ptr<io::ZeroCopyOutputStream> output(outdir->Open(filename));
   io::Printer printer(output.get(), '*'); // '*' works well in the .pm file
 
