@@ -113,7 +113,7 @@ PerlSVGetHelper(io::Printer& printer,
 		  "val = new $fieldtype$;\n"
 		  "val->CopyFrom(THIS->$cppname$($i$));\n"
 		  "sv = sv_newmortal();\n"
-		  "sv_setref_pv(sv, \"$classname$\", (void *)val);\n");
+		  "sv_setref_pv(sv, \"$fieldclass$\", (void *)val);\n");
     break;
   default:
     printer.Print("sv = &PL_sv_undef;\n");

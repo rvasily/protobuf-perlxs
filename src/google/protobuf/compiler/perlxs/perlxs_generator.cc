@@ -596,7 +596,8 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
   FieldDescriptor::CppType fieldtype = field->cpp_type();
 
   if ( fieldtype == FieldDescriptor::CPPTYPE_MESSAGE ) {
-    vars["fieldtype"] = cpp::ClassName(field->message_type(), true);
+    vars["fieldtype"]  = cpp::ClassName(field->message_type(), true);
+    vars["fieldclass"] = MessageClassName(field->message_type());
   }
 
   // For repeated fields, we need an index argument.
