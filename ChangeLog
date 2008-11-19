@@ -1,3 +1,8 @@
+2008-11-19 version 0.3:
+
+  * Issue 1: undef symbols in OS/X (need to link with libprotobuf).
+  * Issue 2: Embedded message code generated with Perl class name.
+	
 2008-10-01 version 0.2:
 
   * Removed CamelCase of class and enum names.

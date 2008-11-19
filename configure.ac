@@ -1,4 +1,4 @@
-AC_INIT([protobuf-perlxs], [0.2], [dave@daveb.net])
+AC_INIT([protobuf-perlxs], [0.3], [dave@daveb.net])
 AM_INIT_AUTOMAKE([-Wall])
 AC_PROG_CXX
 AC_PROG_CC
