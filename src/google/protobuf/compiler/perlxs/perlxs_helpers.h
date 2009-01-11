@@ -10,7 +10,23 @@ namespace protobuf {
 
 namespace io { class Printer; }
 
+extern string StringReplace(const string& s, const string& oldsub,
+			    const string& newsub, bool replace_all);
+
 namespace compiler {
+
+// A couple of the C++ code generator headers are not installed, but
+// we need to call into that code in a few places.  We duplicate the
+// function prototypes here.
+
+namespace cpp {
+  extern string ClassName(const Descriptor* descriptor, bool qualified);
+  extern string ClassName(const EnumDescriptor* enum_descriptor, 
+			  bool qualified);
+  extern string FieldName(const FieldDescriptor* field);
+  extern string StripProto(const string& filename);
+}
+
 namespace perlxs {
 
 // Returns the name used in the typemap.
@@ -36,6 +52,16 @@ void PODPrintEnumValue(const EnumValueDescriptor *value, io::Printer& printer);
 
 // Return a POD-friendly string representation of a field descriptor type.
 string PODFieldTypeString(const FieldDescriptor* field);
+
+void MessageToHashref(const Descriptor * descriptor,
+		      io::Printer& printer,
+		      map<string, string>& vars,
+		      int depth);
+
+void MessageFromHashref(const Descriptor * descriptor,
+			io::Printer& printer,
+			map<string, string>& vars,
+			int depth);
 
 }  // namespace perlxs
 }  // namespace compiler

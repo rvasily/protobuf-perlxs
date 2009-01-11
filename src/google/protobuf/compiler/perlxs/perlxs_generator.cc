@@ -10,26 +10,7 @@
 
 namespace google {
 namespace protobuf {
-
-extern string StringReplace(const string& s, const string& oldsub,
-			    const string& newsub, bool replace_all);
-
 namespace compiler {
-
-// A couple of the C++ code generator headers are not installed, but
-// we need to call into that code in a few places.  We duplicate the
-// function prototypes here.
-
-namespace cpp {
-  extern string ClassName(const Descriptor* descriptor, bool qualified);
-  extern string ClassName(const EnumDescriptor* enum_descriptor, 
-			  bool qualified);
-  extern string FieldName(const FieldDescriptor* field);
-  extern string StripProto(const string& filename);
-}
-
-// Now we can move on to the Perl/XS stuff.
-
 namespace perlxs {
 
 PerlXSGenerator::PerlXSGenerator() {}
@@ -95,17 +76,22 @@ PerlXSGenerator::GenerateMessageXS(const Descriptor* descriptor,
 		"#undef New\n"
 		"#endif\n"
 		"#include <sstream>\n"
+		"#include <stdint.h>\n"
 		"#include \"$base$.pb.h\"\n"
 		"\n"
 		"using namespace std;\n"
 		"\n",
 		"base", base);
 
-  // Typedefs and XS packages
+  // Typedefs, Statics, and XS packages
 
   set<const Descriptor*> seen;
 
   GenerateFileXSTypedefs(descriptor->file(), printer, seen);
+
+  printer.Print("\n\n");
+
+  GenerateMessageStatics(descriptor, printer);
 
   printer.Print("\n\n");
 
@@ -286,7 +272,16 @@ PerlXSGenerator::GenerateDescriptorMethodPOD(const Descriptor* descriptor,
 		"\n"
 		"=over 4\n"
 		"\n"
-		"=item B<$*value* = *name*-E<gt>new>\n"
+		"=item B<$*value* = *name*-E<gt>new( [$arg] )>\n"
+		"\n"
+		"Constructs an instance of C<*name*>.  If a hashref argument\n"
+		"is supplied, it is copied into the message instance as if\n"
+		"the copy_from() method were called immediately after\n"
+		"construction.  Otherwise, if a scalar argument is supplied,\n"
+		"it is interpreted as a serialized instance of the message\n"
+		"type, and the scalar is parsed to populate the message\n"
+		"fields.  Otherwise, if no argument is supplied, an empty\n"
+		"message instance is constructed.\n"
 		"\n"
 		"=back\n"
 		"\n"
@@ -301,10 +296,24 @@ PerlXSGenerator::GenerateDescriptorMethodPOD(const Descriptor* descriptor,
 		"=item B<$*value*2-E<gt>copy_from($*value*1)>\n"	
 		"\n"
 		"Copies the contents of C<*value*1> into C<*value*2>.\n"
+		"C<*value*2> is another instance of the same message type.\n"
+		"\n"
+		"=item B<$*value*2-E<gt>copy_from($hashref)>\n"	
+		"\n"
+		"Copies the contents of C<hashref> into C<*value*2>.\n"
+		"C<hashref> is a Data::Dumper-style representation of an\n"
+		"instance of the message type.\n"
 		"\n"
 		"=item B<$*value*2-E<gt>merge_from($*value*1)>\n"
 		"\n"
 		"Merges the contents of C<*value*1> into C<*value*2>.\n"
+		"C<*value*2> is another instance of the same message type.\n"
+		"\n"
+		"=item B<$*value*2-E<gt>merge_from($hashref)>\n"	
+		"\n"
+		"Merges the contents of C<hashref> into C<*value*2>.\n"
+		"C<hashref> is a Data::Dumper-style representation of an\n"
+		"instance of the message type.\n"
 		"\n"
 		"=item B<$*value*-E<gt>clear()>\n"
 		"\n"
@@ -342,6 +351,15 @@ PerlXSGenerator::GenerateDescriptorMethodPOD(const Descriptor* descriptor,
 		"=item B<$length = $*value*-E<gt>length()>\n"
 		"\n"
 		"Returns the serialized length of C<*value*>.\n"
+		"\n"
+		"=item B<@fields = $*value*-E<gt>fields()>\n"
+		"\n"
+		"Returns the defined fields of C<*value*>.\n"
+		"\n"
+		"=item B<$hashref = $*value*-E<gt>to_hashref()>\n"
+		"\n"
+		"Exports the message to a hashref suitable for use in the\n"
+		"C<copy_from> or C<merge_from> methods.\n"
 		"\n");
 
   // Message field accessors
@@ -575,6 +593,44 @@ PerlXSGenerator::GenerateMessageXSTypedefs(const Descriptor* descriptor,
 		  "classname", cn,
 		  "underscores", un);
   }
+}
+
+
+void
+PerlXSGenerator::GenerateMessageStatics(const Descriptor* descriptor,
+					io::Printer& printer) const
+{
+  for ( int i = 0; i < descriptor->nested_type_count(); i++ ) {
+    GenerateMessageStatics(descriptor->nested_type(i), printer);
+  }
+
+  map<string, string> vars;
+
+  string cn = cpp::ClassName(descriptor, true);
+  string un = StringReplace(cn, "::", "__", true);
+
+  vars["depth"]       = "0";
+  vars["fieldtype"]   = cn;
+  vars["classname"]   = cn;
+  vars["underscores"] = un;
+
+  // from_hashref static helper
+  
+  printer.Print(vars,
+		"static $classname$ *\n"
+		"$underscores$_from_hashref ( SV * sv0 )\n"
+		"{\n"
+		"  $fieldtype$ * msg$depth$ = new $fieldtype$;\n"
+		"\n");
+
+  printer.Indent();
+  MessageFromHashref(descriptor, printer, vars, 0);
+  printer.Outdent();
+
+  printer.Print("\n"
+		"  return msg0;\n"
+		"}\n"
+		"\n");
 }
 
 
@@ -864,35 +920,64 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 {
   map<string, string> vars;
 
-  vars["classname"] = classname;
+  string cn = cpp::ClassName(descriptor, true);
+  string un = StringReplace(cn, "::", "__", true);
 
-  // CopyFrom
+  vars["classname"]   = classname;
+  vars["perlclass"]   = MessageClassName(descriptor);
+  vars["underscores"] = un;
+
+  // copy_from
 
   printer.Print(vars,
 		"void\n"
-		"$classname$::copy_from(other)\n"
-		"  $classname$ *other\n"
+		"$classname$::copy_from(sv)\n"
+		"  SV * sv\n"
 		"  CODE:\n"
-		"    if ( THIS != NULL && other != NULL ) {\n"
-		"      THIS->CopyFrom(*other);\n"
+		"    if ( THIS != NULL && sv != NULL ) {\n"
+		"      if ( sv_derived_from(sv, \"$perlclass$\") ) {\n"
+		"        IV tmp = SvIV((SV *)SvRV(sv));\n"
+		"        $classname$ * other = "
+		"INT2PTR($underscores$ *, tmp);\n"
+		"\n"
+		"        THIS->CopyFrom(*other);\n"
+		"      } else if ( SvROK(sv) &&\n"
+		"                  SvTYPE(SvRV(sv)) == SVt_PVHV ) {\n"
+		"        $classname$ * other = "
+		"$underscores$_from_hashref(sv);\n"
+		"        THIS->CopyFrom(*other);\n"
+		"        delete other;\n"
+		"      }\n"
 		"    }\n"
 		"\n"
 		"\n");
 
-  // MergeFrom
+  // merge_from
 
   printer.Print(vars,
 		"void\n"
-		"$classname$::merge_from(other)\n"
-		"  $classname$ *other\n"
+		"$classname$::merge_from(sv)\n"
+		"  SV * sv\n"
 		"  CODE:\n"
-		"    if ( THIS != NULL && other != NULL ) {\n"
-		"      THIS->MergeFrom(*other);\n"
+		"    if ( THIS != NULL && sv != NULL ) {\n"
+		"      if ( sv_derived_from(sv, \"$perlclass$\") ) {\n"
+		"        IV tmp = SvIV((SV *)SvRV(sv));\n"
+		"        $classname$ * other = "
+		"INT2PTR($underscores$ *, tmp);\n"
+		"\n"
+		"        THIS->MergeFrom(*other);\n"
+		"      } else if ( SvROK(sv) &&\n"
+		"                  SvTYPE(SvRV(sv)) == SVt_PVHV ) {\n"
+		"        $classname$ * other = "
+		"$underscores$_from_hashref(sv);\n"
+		"        THIS->MergeFrom(*other);\n"
+		"        delete other;\n"
+		"      }\n"
 		"    }\n"
 		"\n"
 		"\n");
   
-  // Clear
+  // clear
 
   printer.Print(vars,
 		"void\n"
@@ -904,7 +989,7 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 		"\n"
 		"\n");
 
-  // IsInitialized
+  // is_initialized
 
   printer.Print(vars,
 		"int\n"
@@ -921,7 +1006,7 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 		"\n"
 		"\n");
 
-  // InitializationErrorString
+  // error_string
 
   printer.Print(vars,
 		"SV *\n"
@@ -940,7 +1025,7 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 		"\n"
 		"\n");
 
-  // DiscardUnknownFields
+  // discard_unknown_fields
 
   printer.Print(vars,
 		"void\n"
@@ -952,7 +1037,7 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 		"\n"
 		"\n");
 
-  // DebugString
+  // debug_string
 
   printer.Print(vars,
 		"SV *\n"
@@ -971,7 +1056,7 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 		"\n"
 		"\n");
 
-  // ShortDebugString
+  // short_debug_string
 
   printer.Print(vars,
 		"SV *\n"
@@ -990,7 +1075,7 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 		"\n"
 		"\n");
 
-  // ParseFromString (actually, we call ParseFromArray)
+  // unpack
 
   printer.Print(vars,
 		"int\n"
@@ -1017,7 +1102,7 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 		"\n"
 		"\n");
 
-  // SerializeToString
+  // pack
 
   printer.Print(vars,
 		"SV *\n"
@@ -1041,7 +1126,7 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 		"\n"
 		"\n");
 
-  // ByteSize
+  // length
 
   printer.Print(vars,
 		"int\n"
@@ -1057,8 +1142,61 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 		"    RETVAL\n"
 		"\n"
 		"\n");
-}
 
+  // fields
+
+  ostringstream field_count;
+
+  field_count << descriptor->field_count();
+  vars["field_count"] = field_count.str();
+  printer.Print(vars,
+		"void\n"
+		"$classname$::fields()\n"
+		"  PPCODE:\n"
+		"    EXTEND(SP, $field_count$);\n");
+
+  for ( int i = 0; i < descriptor->field_count(); i++ ) {
+    const FieldDescriptor* field = descriptor->field(i);
+    vars["field"] = field->name();
+    printer.Print(vars,
+		  "    PUSHs(sv_2mortal(newSVpv(\"$field$\",0)));\n"
+		  );
+  }
+
+  printer.Print("\n\n");
+
+  // to_hashref
+
+  printer.Print(vars,
+		"SV *\n"
+		"$classname$::to_hashref()\n"
+		"  CODE:\n"
+		"    if ( THIS != NULL ) {\n"
+		"      HV * hv0 = newHV();\n"
+		"      $classname$ * msg0 = THIS;\n"
+		"\n");
+
+  vars["depth"] = "0";
+  vars["fieldtype"] = classname;
+
+  printer.Indent();
+  printer.Indent();
+  printer.Indent();
+  MessageToHashref(descriptor, printer, vars, 0);
+  printer.Outdent();
+  printer.Outdent();
+  printer.Outdent();
+
+  printer.Print("      RETVAL = newRV_noinc((SV *)hv0);\n"
+		"    } else {\n"
+		"      RETVAL = Nullsv;\n"
+		"    }\n"
+		"\n"
+		"  OUTPUT:\n"
+		"    RETVAL\n"
+		"\n"
+		"\n");
+}
 
 void
 PerlXSGenerator::GenerateMessageXSPackage(const Descriptor* descriptor,
@@ -1068,16 +1206,23 @@ PerlXSGenerator::GenerateMessageXSPackage(const Descriptor* descriptor,
     GenerateMessageXSPackage(descriptor->nested_type(i), printer);
   }
 
+  map<string, string> vars;
+
   string cn = cpp::ClassName(descriptor, true);
   string mn = MessageModuleName(descriptor);
   string pn = MessageClassName(descriptor);
+  string un = StringReplace(cn, "::", "__", true);
 
-  printer.Print(
-    "MODULE = $module$ PACKAGE = $package$\n"
-    "PROTOTYPES: ENABLE\n\n\n",
-    "module", mn,
-    "package", pn
-  );
+  vars["module"]      = mn;
+  vars["classname"]   = cn;
+  vars["package"]     = pn;
+  vars["underscores"] = un;
+
+  printer.Print(vars,
+		"MODULE = $module$ PACKAGE = $package$\n"
+		"PROTOTYPES: ENABLE\n"
+		"\n"
+		"\n");
 
   // BOOT (if there are enum types)
 
@@ -1113,36 +1258,47 @@ PerlXSGenerator::GenerateMessageXSPackage(const Descriptor* descriptor,
 
   // Constructor
 
-  printer.Print(
-    "$classname$ *\n"
-    "$classname$::new ()\n"
-    "  CODE:\n"
-    "    if ( strcmp(CLASS,\"$package$\") ) {\n"
-    "      croak(\"invalid class %s\",CLASS);\n"
-    "    }\n"
-    "    RETVAL = new $classname$;\n"
-    "\n"
-    "  OUTPUT:\n"
-    "    RETVAL\n"
-    "\n"
-    "\n",
-    "classname", cn,
-    "package", pn
-  );
+  printer.Print(vars,
+		"$classname$ *\n"
+		"$classname$::new (...)\n"
+		"  CODE:\n"
+		"    if ( strcmp(CLASS,\"$package$\") ) {\n"
+		"      croak(\"invalid class %s\",CLASS);\n"
+		"    }\n"
+		"    if ( items == 2 ) {\n"
+		"      if ( SvROK(ST(1)) && "
+		"SvTYPE(SvRV(ST(1))) == SVt_PVHV ) {\n"
+		"        RETVAL = $underscores$_from_hashref(ST(1));\n"
+		"      } else {\n"
+		"        STRLEN len;\n"
+		"        char * str;\n"
+		"\n"
+		"        RETVAL = new $classname$;\n"
+		"        str = SvPV(ST(1), len);\n"
+		"        if ( str != NULL ) {\n"
+		"          RETVAL->ParseFromArray(str, len);\n"
+		"        }\n"
+		"      }\n"
+		"    } else {\n"
+		"      RETVAL = new $classname$;\n"
+		"    }\n"
+		"\n"
+		"  OUTPUT:\n"
+		"    RETVAL\n"
+		"\n"
+		"\n");
 
   // Destructor
 
-  printer.Print(
-    "void\n"
-    "$classname$::DESTROY()\n"
-    "  CODE:\n"
-    "    if ( THIS != NULL ) {\n"
-    "      delete THIS;\n"
-    "    }\n"
-    "\n"
-    "\n",
-    "classname", cn
-  );
+  printer.Print(vars,
+		"void\n"
+		"$classname$::DESTROY()\n"
+		"  CODE:\n"
+		"    if ( THIS != NULL ) {\n"
+		"      delete THIS;\n"
+		"    }\n"
+		"\n"
+		"\n");
 
   // Message methods (copy_from, parse_from, etc).
 

@@ -1,5 +1,5 @@
-* Working examples
+* More sophisticated examples (use of shared libraries, etc)
 * Synopsis sections for serializing and unserializing messages
-* to_hashref, from_hashref
-* Passing hashref or other instance of class as constructor argument
+* Modify generated code such that typemap files are unnecessary
 * Extensions
+* RPC interface

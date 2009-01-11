@@ -79,6 +79,9 @@ class LIBPROTOC_EXPORT PerlXSGenerator : public CodeGenerator {
   void GenerateMessageXSTypedefs(const Descriptor* descriptor,
 				 io::Printer& printer,
 				 set<const Descriptor*>& seen) const;
+
+  void GenerateMessageStatics(const Descriptor* descriptor,
+			      io::Printer& printer) const;
   
   void GenerateMessageXSPackage(const Descriptor* descriptor,
 				io::Printer& printer) const;

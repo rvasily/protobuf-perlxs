@@ -1,7 +1,12 @@
 SUBDIRS = src
 
 EXTRA_DIST = \
-	examples/Makefile.PL.in \
-	examples/person.proto \
 	examples/README \
-	examples/test.pl
+	examples/simple/Makefile.PL.in \
+	examples/simple/person.proto \
+	examples/simple/README \
+	examples/simple/test.pl \
+	examples/embedded/Makefile.PL.in \
+	examples/embedded/error.proto \
+	examples/embedded/README \
+	examples/embedded/test.pl
