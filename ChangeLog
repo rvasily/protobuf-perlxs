@@ -30,7 +30,7 @@
     silently ignored, for the following reasons:
 
     1) In some cases, the user may wish to build the message one
-       part at a time via copy_from() of multiple different 
+       part at a time via merge_from() of multiple different 
        hashrefs, ultimately yielding a complete message instance.
 
     2) In any case, missing required fields will be reported when
