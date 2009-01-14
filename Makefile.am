@@ -9,4 +9,8 @@ EXTRA_DIST = \
 	examples/embedded/Makefile.PL.in \
 	examples/embedded/error.proto \
 	examples/embedded/README \
-	examples/embedded/test.pl
+	examples/embedded/test.pl \
+	examples/types/Makefile.PL.in \
+	examples/types/types.proto \
+	examples/types/README \
+	examples/types/test.pl

@@ -230,43 +230,47 @@ StartFieldToHashref(const FieldDescriptor * field,
 
 static void
 FieldToHashrefHelper(io::Printer& printer,
-		     const map<string, string>& vars,
-		     FieldDescriptor::CppType fieldtype)
+		     map<string, string>& vars,
+		     const FieldDescriptor* field)
 {
-  switch ( fieldtype ) {
+  vars["msg"] = "msg" + vars["pdepth"];
+  if ( field->is_repeated() ) {
+    vars["sv"] = "sv" + vars["depth"];
+  } else {
+    vars["sv"] = "sv" + vars["pdepth"];
+  }
+
+  switch ( field->cpp_type() ) {
   case FieldDescriptor::CPPTYPE_INT32:
   case FieldDescriptor::CPPTYPE_BOOL:
   case FieldDescriptor::CPPTYPE_ENUM:
     printer.Print(vars,
-		  "SV * sv$pdepth$ = "
-		  "newSViv(msg$pdepth$->$cppname$($i$));\n");
+		  "SV * $sv$ = newSViv($msg$->$cppname$($i$));\n");
     break;
   case FieldDescriptor::CPPTYPE_UINT32:
     printer.Print(vars,
-		  "SV * sv$pdepth$ = "
-		  "newSVuv(msg$pdepth$->$cppname$($i$));\n");
+		  "SV * $sv$ = newSVuv($msg$->$cppname$($i$));\n");
     break;
   case FieldDescriptor::CPPTYPE_FLOAT:
   case FieldDescriptor::CPPTYPE_DOUBLE:
     printer.Print(vars,
-		  "SV * sv$pdepth$ = "
-		  "newSVnv(msg$pdepth$->$cppname$($i$)));\n");
+		  "SV * $sv$ = newSVnv($msg$->$cppname$($i$));\n");
     break;
   case FieldDescriptor::CPPTYPE_INT64:
   case FieldDescriptor::CPPTYPE_UINT64:
     printer.Print(vars,
 		  "ostringstream ost$pdepth$;\n"
 		  "\n"
-		  "ost$pdepth$ << msg$pdepth$->$cppname$($i$);\n"
-		  "SV * sv$pdepth$ = newSVpv(ost$pdepth$.str().c_str(),"
-		  " ost$pdepth$.str().length()));\n");
+		  "ost$pdepth$ << $msg$->$cppname$($i$);\n"
+		  "SV * $sv$ = newSVpv(ost$pdepth$.str().c_str(),"
+		  " ost$pdepth$.str().length());\n");
     break;
   case FieldDescriptor::CPPTYPE_STRING:
   case FieldDescriptor::CPPTYPE_MESSAGE:
   default:
     printer.Print(vars,
-		  "SV * sv$pdepth$ = newSVpv(msg$pdepth$->"
-		  "$cppname$($i$).c_str(), msg$pdepth$->"
+		  "SV * $sv$ = newSVpv($msg$->"
+		  "$cppname$($i$).c_str(), $msg$->"
 		  "$cppname$($i$).length());\n");
     break;
   }
@@ -291,9 +295,15 @@ EndFieldToHashref(const FieldDescriptor * field,
 		  "hv_store(hv$pdepth$, \"$cppname$\", "
 		  "sizeof(\"$cppname$\") - 1, sv$pdepth$, 0);\n");
   } else {
-    printer.Print(vars,
-		  "hv_store(hv$pdepth$, \"$cppname$\", "
-		  "sizeof(\"$cppname$\") - 1, sv$pdepth$, 0);\n");
+    if ( field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE ) {
+      printer.Print(vars,
+		    "hv_store(hv$pdepth$, \"$cppname$\", "
+		    "sizeof(\"$cppname$\") - 1, sv$depth$, 0);\n");
+    } else {
+      printer.Print(vars,
+		    "hv_store(hv$pdepth$, \"$cppname$\", "
+		    "sizeof(\"$cppname$\") - 1, sv$pdepth$, 0);\n");
+    }
   }
   printer.Outdent();
   printer.Print("}\n");
@@ -321,14 +331,15 @@ void MessageToHashref(const Descriptor * descriptor,
     if ( fieldtype == FieldDescriptor::CPPTYPE_MESSAGE ) {
       vars["fieldtype"] = cpp::ClassName(field->message_type(), true);
       printer.Print(vars,
-		    "$fieldtype$ * msg$depth$ = msg$pdepth$->"
+		    "$fieldtype$ * msg$ndepth$ = msg$pdepth$->"
 		    "mutable_$cppname$($i$);\n"
-		    "HV * hv$depth$ = newHV();\n"
-		    "SV * sv$depth$ = newRV_noinc((SV *)hv$depth$);\n"
+		    "HV * hv$ndepth$ = newHV();\n"
+		    "SV * sv$depth$ = newRV_noinc((SV *)hv$ndepth$);\n"
 		    "\n");
-      MessageToHashref(field->message_type(), printer, vars, depth + 1);
+      MessageToHashref(field->message_type(), printer, vars, depth + 2);
+      SetupDepthVars(vars, depth);
     } else {
-      FieldToHashrefHelper(printer, vars, fieldtype);
+      FieldToHashrefHelper(printer, vars, field);
     }
 
     EndFieldToHashref(field, printer, vars, depth);
@@ -341,57 +352,53 @@ FieldFromHashrefHelper(io::Printer& printer,
 		       map<string, string>& vars,
 		       const FieldDescriptor * field)
 {
+  vars["msg"] = "msg" + vars["pdepth"];
+  vars["var"] = "*sv" + vars["depth"];
+
+  if ( field->is_repeated() ) {
+    vars["do"]  = "add";
+  } else {
+    vars["do"]  = "set";
+  }
+
   switch ( field->cpp_type() ) {
   case FieldDescriptor::CPPTYPE_INT32:
   case FieldDescriptor::CPPTYPE_BOOL:
-    {
-      printer.Print(vars,
-		    "msg$pdepth$->set_$cppname$(SvIV(*sv$depth$));\n");
-    }
+    printer.Print(vars,
+		  "$msg$->$do$_$cppname$(SvIV($var$));\n");
     break;
   case FieldDescriptor::CPPTYPE_ENUM:
-    {
-      vars["type"] = EnumClassName(field->enum_type());
-      printer.Print(vars,
-		    "msg$pdepth$->set_$cppname$(($type$)SvIV(*sv$depth$));\n");
-    }
+    vars["type"] = EnumClassName(field->enum_type());
+    printer.Print(vars,
+		  "$msg$->$do$_$cppname$"
+		  "(($type$)SvIV($var$));\n");
     break;
   case FieldDescriptor::CPPTYPE_UINT32:
-    {
-      printer.Print(vars,
-		    "msg$pdepth$->set_$cppname$(SvUV(*sv$depth$));\n");
-    }
+    printer.Print(vars,
+		  "$msg$->$do$_$cppname$(SvUV($var$));\n");
     break;
   case FieldDescriptor::CPPTYPE_FLOAT:
   case FieldDescriptor::CPPTYPE_DOUBLE:
-    {
-      printer.Print(vars,
-		    "msg$pdepth$->set_$cppname$(SvNV(*sv$depth$));\n");
-    }
+    printer.Print(vars,
+		  "$msg$->$do$_$cppname$(SvNV($var$));\n");
     break;
   case FieldDescriptor::CPPTYPE_INT64:
-    {
-      printer.Print(vars,
-		    "int64_t iv$pdepth$ = "
-		    "strtoll(SvPV_noloen(*sv$depth$), NULL, 0);\n"
-		    "\n"
-		    "msg$pdepth$->set_$cppname$(iv$pdepth$);\n");
-    }
+    printer.Print(vars,
+		  "int64_t iv$pdepth$ = "
+		  "strtoll(SvPV_nolen($var$), NULL, 0);\n"
+		  "\n"
+		  "$msg$->$do$_$cppname$(iv$pdepth$);\n");
     break;
   case FieldDescriptor::CPPTYPE_UINT64:
-    {
-      printer.Print(vars,
-		    "uint64_t uv$pdepth$ = "
-		    "strtoull(SvPV_noloen(*sv$depth$), NULL, 0);\n"
-		    "\n"
-		    "msg$pdepth$->set_$cppname$(uv$pdepth$);\n");
-    }
+    printer.Print(vars,
+		  "uint64_t uv$pdepth$ = "
+		  "strtoull(SvPV_nolen($var$), NULL, 0);\n"
+		  "\n"
+		  "$msg$->$do$_$cppname$(uv$pdepth$);\n");
     break;
   case FieldDescriptor::CPPTYPE_STRING:
-    {
-      printer.Print(vars,
-		    "msg$pdepth$->set_$cppname$(SvPV_nolen(*sv$depth$));\n");
-    }
+    printer.Print(vars,
+		  "$msg$->$do$_$cppname$(SvPV_nolen($var$));\n");
     break;
   case FieldDescriptor::CPPTYPE_MESSAGE:
     /* Should never get here. */
@@ -423,10 +430,13 @@ void MessageFromHashref(const Descriptor * descriptor,
 
   for ( i = 0; i < descriptor->field_count(); i++ ) {
     const FieldDescriptor* field = descriptor->field(i);
-    FieldDescriptor::CppType fieldtype = field->cpp_type();
 
     vars["field"]   = field->name();
     vars["cppname"] = cpp::FieldName(field);
+
+    if ( field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE ) {
+      vars["fieldtype"] = cpp::ClassName(field->message_type(), true);
+    }
 
     printer.Print(vars,
 		  "if ( (sv$depth$ = hv_fetch(hv$pdepth$, "
@@ -434,8 +444,7 @@ void MessageFromHashref(const Descriptor * descriptor,
 
     printer.Indent();
 
-    if ( fieldtype == FieldDescriptor::CPPTYPE_MESSAGE ) {
-      vars["fieldtype"] = cpp::ClassName(field->message_type(), true);
+    if ( field->is_repeated() ) {
       printer.Print(vars,
 		    "if ( SvROK(*sv$depth$) && "
 		    "SvTYPE(SvRV(*sv$depth$)) == SVt_PVAV ) {\n");
@@ -446,29 +455,49 @@ void MessageFromHashref(const Descriptor * descriptor,
 		    "for ( int i$depth$ = 0; "
 		    "i$depth$ < av_len(av$depth$); i$depth$++ ) {\n");
       printer.Indent();
-      printer.Print(vars,
-		    "$fieldtype$ * msg$ndepth$ = "
-		    "msg$pdepth$->add_$cppname$();\n");
-      SetupDepthVars(vars, depth + 1);
-      printer.Print(vars,
-		    "SV ** rv$pdepth$;\n"
-		    "SV *  sv$depth$;\n"
-		    "\n"
-		    "if ( (rv$pdepth$ = "
-		    "av_fetch(av$pdepth$, i$pdepth$, 0)) != NULL ) {\n");
+
+      if ( field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE ) {
+	printer.Print(vars,
+		      "$fieldtype$ * msg$ndepth$ = "
+		      "msg$pdepth$->add_$cppname$();\n"
+		      "SV ** sv$depth$;\n"
+		      "SV *  sv$ndepth$;\n"
+		      "\n"
+		      "if ( (sv$depth$ = "
+		      "av_fetch(av$depth$, i$depth$, 0)) != NULL ) {\n"
+		      "  sv$ndepth$ = *sv$depth$;\n");
+      } else {
+	printer.Print(vars,
+		      "SV ** sv$depth$;\n"
+		      "\n"
+		      "if ( (sv$depth$ = "
+		      "av_fetch(av$depth$, i$depth$, 0)) != NULL ) {\n");
+      }
       printer.Indent();
-      printer.Print(vars,
-		    "sv$depth$ = *rv$pdepth$;\n");
+    } else {
+      if ( field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE ) {
+	printer.Print(vars,
+		      "$fieldtype$ * msg$ndepth$ = "
+		      "msg$pdepth$->mutable_$cppname$();\n"
+		      "SV * sv$ndepth$ = *sv$depth$;\n"
+		      "\n");
+      }
+    }
+
+    if ( field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE ) {
       MessageFromHashref(field->message_type(), printer, vars, depth + 2);
       SetupDepthVars(vars, depth);
-      printer.Outdent();
-      printer.Print("}\n");
-      printer.Outdent();
-      printer.Print("}\n");
-      printer.Outdent();
-      printer.Print("}\n");
     } else {
       FieldFromHashrefHelper(printer, vars, field);
+    }
+
+    if ( field->is_repeated() ) {
+      printer.Outdent();
+      printer.Print("}\n");
+      printer.Outdent();
+      printer.Print("}\n");
+      printer.Outdent();
+      printer.Print("}\n");
     }
 
     printer.Outdent();

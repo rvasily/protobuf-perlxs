@@ -1,3 +1,10 @@
+2009-01-14 version 0.5:
+
+  * Bugfix: generated code had numerous issues.  Patch contributed
+    by Seth Daniel.
+
+  * New example illustrating use of protobuf types.
+
 2009-01-09 version 0.4:
 
   * New method in generated classes:
