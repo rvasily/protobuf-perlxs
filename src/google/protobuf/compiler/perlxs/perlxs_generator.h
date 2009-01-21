@@ -52,14 +52,14 @@ class LIBPROTOC_EXPORT PerlXSGenerator : public CodeGenerator {
   void GenerateMessageModule(const Descriptor* descriptor,
 			     OutputDirectory* outdir) const;
 
+  void GenerateMessagePOD(const Descriptor* descriptor,
+			  OutputDirectory* outdir) const;
+
   void GenerateDescriptorClassNamePOD(const Descriptor* descriptor,
 				      io::Printer& printer) const;
 
   void GenerateDescriptorMethodPOD(const Descriptor* descriptor,
 				   io::Printer& printer) const;
-
-  void GenerateMessageTypemap(const Descriptor* descriptor,
-			      OutputDirectory* outdir) const;
 
   void GenerateEnumModule(const EnumDescriptor* enum_descriptor,
 			  OutputDirectory* outdir) const;
@@ -86,14 +86,9 @@ class LIBPROTOC_EXPORT PerlXSGenerator : public CodeGenerator {
   void GenerateMessageXSPackage(const Descriptor* descriptor,
 				io::Printer& printer) const;
 
-  void GenerateTypemapType(const Descriptor* descriptor,
-			   io::Printer& printer) const;
-
   void GenerateTypemapInput(const Descriptor* descriptor,
-			    io::Printer& printer) const;
-
-  void GenerateTypemapOutput(const Descriptor* descriptor,
-			    io::Printer& printer) const;
+			    io::Printer& printer,
+			    const string& svname) const;
 };
  
 }  // namespace perlxs

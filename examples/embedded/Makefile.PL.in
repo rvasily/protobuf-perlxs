@@ -21,7 +21,6 @@ WriteMakefile(
               'LD'            => '$(CC)',
               'CCFLAGS'       => '-fno-strict-aliasing',
 	      'OBJECT'        => 'error.pb.o Error.o',
-	      'TYPEMAPS'      => ['Error.typemap'],
               'INC'           =>  "@CPPFLAGS@",
 	      'LIBS'          => ["@LDFLAGS@ -lprotobuf"],
               'XSOPT'         => '-C++',

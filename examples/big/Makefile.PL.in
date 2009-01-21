@@ -4,7 +4,7 @@ $CC = 'g++';
 
 # Generate the C++, XS, and Perl files that we need.
 
-my $protoxs = "protoxs --cpp_out=. --out=. types.proto";
+my $protoxs = "protoxs --cpp_out=. --out=. big.proto";
 
 print "Generating C++ and Perl/XS sources...\n";
 print "$protoxs\n";
@@ -14,15 +14,15 @@ print "$protoxs\n";
 # Now write the Makefile.
 
 WriteMakefile(
-	      'NAME'	      => 'Protobuf::Types',
-	      'VERSION_FROM'  => 'Types.pm',
+	      'NAME'	      => 'Big::Message',
+	      'VERSION_FROM'  => 'Message.pm',
 	      'OPTIMIZE'      => '-O2 -Wall',
               'CC'            => $CC,
               'LD'            => '$(CC)',
               'CCFLAGS'       => '-fno-strict-aliasing',
-	      'OBJECT'        => 'types.pb.o Types.o',
+	      'OBJECT'        => 'big.pb.o Message.o',
               'INC'           =>  "@CPPFLAGS@",
 	      'LIBS'          => ["@LDFLAGS@ -lprotobuf"],
               'XSOPT'         => '-C++',
-	      clean           => { FILES => "Types.* types.pb.* lib" }
+	      clean           => { FILES => "Message.* big.pb.* lib" }
 	     );

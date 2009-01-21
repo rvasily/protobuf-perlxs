@@ -1,3 +1,33 @@
+2009-01-20 version 0.6:
+
+  * Issue 3: Off-by-one error in XS generated code for initializing 
+	     repeated elements in ->new() (Patch contributed by
+	     Jason Hord).
+
+  * Separated generated POD documentation from .pm files into .pod
+    files.
+
+  * Eliminated the need to generate (and use) typemap files.
+
+  * Performance enhancement: pack() uses a ZeroCopyStream to avoid
+    an extra string copy.  The performance of packing large messages
+    is roughly twice as good as it was before.
+
+  * Added an example that packs and unpacks a large message.  Found
+    that the performance of populating, packing, and unpacking a 
+    message with 10 strings of 2 MB each was:
+
+    Implementation           pack      unpack    pack + unpack
+    --------------------------------------------------------------
+    Storable freeze/thaw     0.052991  0.032896  0.085887
+    protoxs/NoZeroCopy       0.067012  0.023046  0.090058
+    protoxs/ZeroCopy         0.042966  0.020175  0.063141
+
+    All three methods are quite fast, but protoxs/ZeroCopy wins by a
+    significant margin, with an overall pack + unpack throughput of
+    ~316 MB/s, compared with 232 MB/s for Storable and ~222 MB/s for
+    protoxs/NoZeroCopy.
+
 2009-01-14 version 0.5:
 
   * Bugfix: generated code had numerous issues.  Patch contributed

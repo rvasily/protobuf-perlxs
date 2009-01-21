@@ -2,6 +2,10 @@ SUBDIRS = src
 
 EXTRA_DIST = \
 	examples/README \
+	examples/big/Makefile.PL.in \
+	examples/big/big.proto \
+	examples/big/README \
+	examples/big/test.pl \
 	examples/simple/Makefile.PL.in \
 	examples/simple/person.proto \
 	examples/simple/README \

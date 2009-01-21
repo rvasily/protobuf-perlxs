@@ -21,7 +21,6 @@ WriteMakefile(
               'LD'            => '$(CC)',
               'CCFLAGS'       => '-fno-strict-aliasing',
 	      'OBJECT'        => 'person.pb.o Person.o',
-	      'TYPEMAPS'      => ['Person.typemap'],
               'INC'           =>  "@CPPFLAGS@",
 	      'LIBS'          => ["@LDFLAGS@ -lprotobuf"],
               'XSOPT'         => '-C++',

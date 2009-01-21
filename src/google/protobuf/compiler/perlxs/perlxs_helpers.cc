@@ -453,7 +453,7 @@ void MessageFromHashref(const Descriptor * descriptor,
 		    "AV * av$depth$ = (AV *)SvRV(*sv$depth$);\n"
 		    "\n"
 		    "for ( int i$depth$ = 0; "
-		    "i$depth$ < av_len(av$depth$); i$depth$++ ) {\n");
+		    "i$depth$ <= av_len(av$depth$); i$depth$++ ) {\n");
       printer.Indent();
 
       if ( field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE ) {

@@ -1,4 +1,4 @@
-AC_INIT([protobuf-perlxs], [0.5], [dave@daveb.net])
+AC_INIT([protobuf-perlxs], [0.6], [dave@daveb.net])
 AM_INIT_AUTOMAKE([-Wall])
 AC_PROG_CXX
 AC_PROG_CC
@@ -23,6 +23,7 @@ fi
 AC_CONFIG_FILES([
 Makefile
 src/Makefile
+examples/big/Makefile.PL
 examples/simple/Makefile.PL
 examples/embedded/Makefile.PL
 examples/types/Makefile.PL

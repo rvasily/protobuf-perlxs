@@ -8,6 +8,10 @@
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/io/zero_copy_stream.h>
 
+
+//#define NO_ZERO_COPY 1
+
+
 namespace google {
 namespace protobuf {
 namespace compiler {
@@ -31,8 +35,8 @@ PerlXSGenerator::Generate(const FileDescriptor* file,
     const Descriptor* message_type = file->message_type(i);
 
     GenerateMessageXS(message_type, outdir);
+    GenerateMessagePOD(message_type, outdir);
     GenerateMessageModule(message_type, outdir);
-    GenerateMessageTypemap(message_type, outdir);
   }
 
   for ( int i = 0; i < file->enum_type_count(); i++ ) {
@@ -75,13 +79,59 @@ PerlXSGenerator::GenerateMessageXS(const Descriptor* descriptor,
 		"#ifdef New\n"
 		"#undef New\n"
 		"#endif\n"
-		"#include <sstream>\n"
 		"#include <stdint.h>\n"
+		"#include <sstream>\n"
+		"#include <google/protobuf/stubs/common.h>\n"
+		"#include <google/protobuf/io/zero_copy_stream.h>\n"
 		"#include \"$base$.pb.h\"\n"
 		"\n"
 		"using namespace std;\n"
 		"\n",
-		"base", base);
+		"base",
+		base);
+
+  // ZeroCopyOutputStream implementation (for improved pack() performance)
+
+  printer.Print("class $base$_OutputStream :\n"
+		"  public google::protobuf::io::ZeroCopyOutputStream {\n"
+		"public:\n"
+		"  explicit $base$_OutputStream(SV * sv) :\n"
+		"  sv_(sv), len_(0) {}\n"
+		"  ~$base$_OutputStream() {}\n"
+		"\n"
+		"  bool Next(void** data, int* size)\n"
+		"  {\n"
+		"    STRLEN nlen = len_ << 1;\n"
+		"\n"
+		"    if ( nlen < 16 ) nlen = 16;\n"
+		"    SvGROW(sv_, nlen);\n"
+		"    *data = SvEND(sv_) + len_;\n"
+		"    *size = SvLEN(sv_) - len_;\n"
+		"    len_ = nlen;\n"
+		"\n"
+		"    return true;\n"
+		"  }\n"
+		"\n"
+		"  void BackUp(int count)\n"
+		"  {\n"
+		"    SvCUR_set(sv_, SvLEN(sv_) - count);\n"
+		"  }\n"
+		"\n"
+		"  int64_t ByteCount() const\n"
+		"  {\n"
+		"    return (int64_t)SvCUR(sv_);\n"
+		"  }\n"
+		"\n"
+		"private:\n"
+		"  SV * sv_;\n"
+		"  STRLEN len_;\n"
+		"\n"
+		"  GOOGLE_DISALLOW_EVIL_CONSTRUCTORS($base$_OutputStream);\n"
+		"};\n"
+		"\n"
+		"\n",
+		"base",
+		base);
 
   // Typedefs, Statics, and XS packages
 
@@ -135,8 +185,24 @@ PerlXSGenerator::GenerateMessageModule(const Descriptor* descriptor,
 		"\n"
 		"__END__\n"
 		"\n");
-  
-  // Now generate POD documentation for the module.
+}
+
+
+void
+PerlXSGenerator::GenerateMessagePOD(const Descriptor* descriptor,
+				    OutputDirectory* outdir) const
+{
+  string filename = descriptor->name() + ".pod";
+  scoped_ptr<io::ZeroCopyOutputStream> output(outdir->Open(filename));
+  io::Printer printer(output.get(), '*'); // '*' works well in the .pod file
+
+  map<string, string> vars;
+
+  vars["package"] = MessageModuleName(descriptor);
+  vars["message"] = descriptor->full_name();
+  vars["name"]    = descriptor->name();
+
+  // Generate POD documentation for the module.
 
   printer.Print(vars,
 		"=pod\n"
@@ -446,35 +512,6 @@ PerlXSGenerator::GenerateDescriptorMethodPOD(const Descriptor* descriptor,
 
 
 void
-PerlXSGenerator::GenerateMessageTypemap(const Descriptor* descriptor,
-					OutputDirectory* outdir) const
-{
-  string filename = descriptor->name() + ".typemap";
-  scoped_ptr<io::ZeroCopyOutputStream> output(outdir->Open(filename));
-  io::Printer printer(output.get(), '@'); // '@' works well in the typemap
-
-  printer.Print("TYPEMAP\n"
-		"\n");
-
-  GenerateTypemapType(descriptor, printer);
-
-  printer.Print("\n"
-		"\n"
-		"INPUT\n");
-
-  GenerateTypemapInput(descriptor, printer);
-
-  printer.Print("\n"
-		"\n"
-		"OUTPUT\n");
-
-  GenerateTypemapOutput(descriptor, printer);
-
-  printer.Print("\n");
-}
-
-
-void
 PerlXSGenerator::GenerateEnumModule(const EnumDescriptor* enum_descriptor,
 				    OutputDirectory* outdir) const
 {
@@ -639,10 +676,12 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
 						 io::Printer& printer,
 						 const string& classname) const
 {
+  const Descriptor* descriptor = field->containing_type();
+  string            cppname    = cpp::FieldName(field);
+  string            perlclass  = MessageClassName(descriptor);
+  bool              repeated   = field->is_repeated();
+
   map<string, string> vars;
-  string cppname   = cpp::FieldName(field);
-  string perlclass = MessageClassName(field->containing_type());
-  bool   repeated  = field->is_repeated();
 
   vars["classname"] = classname;
   vars["cppname"]   = cppname;
@@ -671,8 +710,11 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
   if ( repeated ) {
     printer.Print(vars,
 		  "I32\n"
-		  "$classname$::$perlname$_size()\n"
-		  "  CODE:\n"
+		  "$perlname$_size(svTHIS)\n"
+		  "  SV * svTHIS;\n"
+		  "  CODE:\n");
+    GenerateTypemapInput(descriptor, printer, "THIS");
+    printer.Print(vars,
 		  "    RETVAL = THIS->$cppname$_size();\n"
 		  "\n"
 		  "  OUTPUT:\n"
@@ -680,8 +722,11 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
   } else {
     printer.Print(vars,
 		  "I32\n"
-		  "$classname$::has_$perlname$()\n"
-		  "  CODE:\n"
+		  "has_$perlname$(svTHIS)\n"
+		  "  SV * svTHIS;\n"
+		  "  CODE:\n");
+    GenerateTypemapInput(descriptor, printer, "THIS");
+    printer.Print(vars,
 		  "    RETVAL = THIS->has_$cppname$();\n"
 		  "\n"
 		  "  OUTPUT:\n"
@@ -696,8 +741,11 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
 
   printer.Print(vars,
 		"void\n"
-		"$classname$::clear_$perlname$()\n"
-		"  CODE:\n"
+		"clear_$perlname$(svTHIS)\n"
+		"  SV * svTHIS;\n"
+		"  CODE:\n");
+  GenerateTypemapInput(descriptor, printer, "THIS");
+  printer.Print(vars,
 		"    THIS->clear_$cppname$();\n"
 		"\n"
 		"\n");
@@ -711,14 +759,15 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
   if ( repeated ) {
     printer.Print(vars,
 		  "void\n"
-		  "$classname$::$perlname$(...)\n");
+		  "$perlname$(svTHIS, ...)\n");
   } else {
     printer.Print(vars,
 		  "void\n"
-		  "$classname$::$perlname$()\n");
+		  "$perlname$(svTHIS)\n");
   }
 
-  printer.Print("  PREINIT:\n"
+  printer.Print("  SV * svTHIS;\n"
+		"PREINIT:\n"
 		"    SV * sv;\n");
 
   if ( repeated ) {
@@ -742,6 +791,8 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
 
   printer.Print("\n"
 		"  PPCODE:\n");
+
+  GenerateTypemapInput(descriptor, printer, "THIS");
 
   // For repeated fields, we need to check the usage ourselves.
 
@@ -799,12 +850,14 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
   if ( repeated ) {
     printer.Print(vars,
 		  "void\n"
-		  "$classname$::add_$perlname$(val)\n");
+		  "add_$perlname$(svTHIS, svVAL)\n");
   } else {
     printer.Print(vars,
 		  "void\n"
-		  "$classname$::set_$perlname$(val)\n");
+		  "set_$perlname$(svTHIS, svVAL)\n");
   }
+
+  printer.Print("  SV * svTHIS\n");
 
   // What is the incoming type?
 
@@ -814,78 +867,80 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
     // Fall through
   case FieldDescriptor::CPPTYPE_INT32:
   case FieldDescriptor::CPPTYPE_BOOL:
-    vars["value"] = "val";
-    printer.Print("  IV val\n"
+    vars["value"] = "svVAL";
+    printer.Print("  IV svVAL\n"
 		  "\n"
 		  "  CODE:\n");
     break;
   case FieldDescriptor::CPPTYPE_UINT32:
-    vars["value"] = "val";
-    printer.Print("  UV val\n"
+    vars["value"] = "svVAL";
+    printer.Print("  UV svVAL\n"
 		  "\n"
 		  "  CODE:\n");
     break;
   case FieldDescriptor::CPPTYPE_FLOAT:
   case FieldDescriptor::CPPTYPE_DOUBLE:
-    vars["value"] = "val";
-    printer.Print("  NV val\n"
+    vars["value"] = "svVAL";
+    printer.Print("  NV svVAL\n"
 		  "\n"
 		  "  CODE:\n");
     break;
   case FieldDescriptor::CPPTYPE_INT64:
     vars["value"] = "lval";
-    printer.Print("  char *val\n"
+    printer.Print("  char *svVAL\n"
 		  "\n"
 		  "  PREINIT:\n"
 		  "    long long lval;\n"
 		  "\n"
 		  "  CODE:\n"
-		  "    lval = strtoll((val) ? val : \"\", NULL, 0);\n");
+		  "    lval = strtoll((svVAL) ? svVAL : \"\", NULL, 0);\n");
     break;
   case FieldDescriptor::CPPTYPE_UINT64:
     vars["value"] = "lval";
-    printer.Print("  char *val\n"
+    printer.Print("  char *svVAL\n"
 		  "\n"
 		  "  PREINIT:\n"
 		  "    unsigned long long lval;\n"
 		  "\n"
 		  "  CODE:\n"
-		  "    lval = strtoull((val) ? val : \"\", NULL, 0);\n");
+		  "    lval = strtoull((svVAL) ? svVAL : \"\", NULL, 0);\n");
     break;
   case FieldDescriptor::CPPTYPE_STRING:
     vars["value"] = "sval";
-    printer.Print("  char *val\n"
+    printer.Print("  char *svVAL\n"
 		  "\n"
 		  "  PREINIT:\n"
-		  "    string sval = (val) ? val : \"\";\n"
+		  "    string sval = (svVAL) ? svVAL : \"\";\n"
 		  "\n"
 		  "  CODE:\n");
     break;
   case FieldDescriptor::CPPTYPE_MESSAGE:
     printer.Print(vars,
-		  "  $fieldtype$ * val\n"
-		  "\n"
-		  "  PREINIT:\n"
-		  "    $fieldtype$ * mval;\n"
-		  "\n"
+		  "  SV * svVAL\n"
 		  "  CODE:\n");
     break;
   default:
-    vars["value"] = "val";
+    vars["value"] = "svVAL";
     break;
+  }
+
+  GenerateTypemapInput(descriptor, printer, "THIS");
+
+  if ( fieldtype == FieldDescriptor::CPPTYPE_MESSAGE ) {
+    GenerateTypemapInput(field->message_type(), printer, "VAL");
   }
 
   if ( repeated ) {
     if ( fieldtype == FieldDescriptor::CPPTYPE_MESSAGE ) {
       printer.Print(vars,
-		    "    if ( val != NULL ) {\n"
-		    "      mval = THIS->add_$cppname$();\n"
-		    "      mval->CopyFrom(*val);\n"
+		    "    if ( VAL != NULL ) {\n"
+		    "      $fieldtype$ * mval = THIS->add_$cppname$();\n"
+		    "      mval->CopyFrom(*VAL);\n"
 		    "    }\n");
     } else if ( fieldtype == FieldDescriptor::CPPTYPE_ENUM ) {
       printer.Print(vars,
-		    "    if ( $etype$_IsValid(val) ) {\n"
-		    "      THIS->add_$cppname$(($etype$)val);\n"
+		    "    if ( $etype$_IsValid(svVAL) ) {\n"
+		    "      THIS->add_$cppname$(($etype$)svVAL);\n"
 		    "    }\n");
     } else {
       printer.Print(vars,
@@ -894,14 +949,14 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
   } else {
     if ( fieldtype == FieldDescriptor::CPPTYPE_MESSAGE ) {
       printer.Print(vars,
-		    "    if ( val != NULL ) {\n"
-		    "      mval = THIS->mutable_$cppname$();\n"
-		    "      mval->CopyFrom(*val);\n"
+		    "    if ( VAL != NULL ) {\n"
+		    "      $fieldtype$ * mval = THIS->mutable_$cppname$();\n"
+		    "      mval->CopyFrom(*VAL);\n"
 		    "    }\n");
     } else if ( fieldtype == FieldDescriptor::CPPTYPE_ENUM ) {
       printer.Print(vars,
-		    "    if ( $etype$_IsValid(val) ) {\n"
-		    "      THIS->set_$cppname$(($etype$)val);\n"
+		    "    if ( $etype$_IsValid(svVAL) ) {\n"
+		    "      THIS->set_$cppname$(($etype$)svVAL);\n"
 		    "    }\n");
     } else {
       printer.Print(vars,
@@ -931,9 +986,12 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 
   printer.Print(vars,
 		"void\n"
-		"$classname$::copy_from(sv)\n"
+		"copy_from(svTHIS, sv)\n"
+		"  SV * svTHIS\n"
 		"  SV * sv\n"
-		"  CODE:\n"
+		"  CODE:\n");
+  GenerateTypemapInput(descriptor, printer, "THIS");
+  printer.Print(vars,
 		"    if ( THIS != NULL && sv != NULL ) {\n"
 		"      if ( sv_derived_from(sv, \"$perlclass$\") ) {\n"
 		"        IV tmp = SvIV((SV *)SvRV(sv));\n"
@@ -956,9 +1014,12 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 
   printer.Print(vars,
 		"void\n"
-		"$classname$::merge_from(sv)\n"
+		"merge_from(svTHIS, sv)\n"
+		"  SV * svTHIS\n"
 		"  SV * sv\n"
-		"  CODE:\n"
+		"  CODE:\n");
+  GenerateTypemapInput(descriptor, printer, "THIS");
+  printer.Print(vars,
 		"    if ( THIS != NULL && sv != NULL ) {\n"
 		"      if ( sv_derived_from(sv, \"$perlclass$\") ) {\n"
 		"        IV tmp = SvIV((SV *)SvRV(sv));\n"
@@ -981,8 +1042,11 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 
   printer.Print(vars,
 		"void\n"
-		"$classname$::clear()\n"
-		"  CODE:\n"
+		"clear(svTHIS)\n"
+		"  SV * svTHIS\n"
+		"  CODE:\n");
+  GenerateTypemapInput(descriptor, printer, "THIS");
+  printer.Print(vars,
 		"    if ( THIS != NULL ) {\n"
 		"      THIS->Clear();\n"
 		"    }\n"
@@ -993,8 +1057,11 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 
   printer.Print(vars,
 		"int\n"
-		"$classname$::is_initialized()\n"
-		"  CODE:\n"
+		"is_initialized(svTHIS)\n"
+		"  SV * svTHIS\n"
+		"  CODE:\n");
+  GenerateTypemapInput(descriptor, printer, "THIS");
+  printer.Print(vars,
 		"    if ( THIS != NULL ) {\n"
 		"      RETVAL = THIS->IsInitialized();\n"
 		"    } else {\n"
@@ -1010,11 +1077,14 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 
   printer.Print(vars,
 		"SV *\n"
-		"$classname$::error_string()\n"
+		"error_string(svTHIS)\n"
+		"  SV * svTHIS\n"
 		"  PREINIT:\n"
 		"    string estr;\n"
 		"\n"
-		"  CODE:\n"
+		"  CODE:\n");
+  GenerateTypemapInput(descriptor, printer, "THIS");
+  printer.Print(vars,
 		"    if ( THIS != NULL ) {\n"
 		"      estr = THIS->InitializationErrorString();\n"
 		"    }\n"
@@ -1029,8 +1099,11 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 
   printer.Print(vars,
 		"void\n"
-		"$classname$::discard_unkown_fields()\n"
-		"  CODE:\n"
+		"discard_unkown_fields(svTHIS)\n"
+		"  SV * svTHIS\n"
+		"  CODE:\n");
+  GenerateTypemapInput(descriptor, printer, "THIS");
+  printer.Print(vars,
 		"    if ( THIS != NULL ) {\n"
 		"      THIS->DiscardUnknownFields();\n"
 		"    }\n"
@@ -1041,11 +1114,14 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 
   printer.Print(vars,
 		"SV *\n"
-		"$classname$::debug_string()\n"
+		"debug_string(svTHIS)\n"
+		"  SV * svTHIS\n"
 		"  PREINIT:\n"
 		"    string dstr;\n"
 		"\n"
-		"  CODE:\n"
+		"  CODE:\n");
+  GenerateTypemapInput(descriptor, printer, "THIS");
+  printer.Print(vars,
 		"    if ( THIS != NULL ) {\n"
 		"      dstr = THIS->DebugString();\n"
 		"    }\n"
@@ -1060,11 +1136,14 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 
   printer.Print(vars,
 		"SV *\n"
-		"$classname$::short_debug_string()\n"
+		"short_debug_string(svTHIS)\n"
+		"  SV * svTHIS\n"
 		"  PREINIT:\n"
 		"    string dstr;\n"
 		"\n"
-		"  CODE:\n"
+		"  CODE:\n");
+  GenerateTypemapInput(descriptor, printer, "THIS");
+  printer.Print(vars,
 		"    if ( THIS != NULL ) {\n"
 		"      dstr = THIS->ShortDebugString();\n"
 		"    }\n"
@@ -1079,13 +1158,16 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 
   printer.Print(vars,
 		"int\n"
-		"$classname$::unpack(arg)\n"
-		"  SV *arg;\n"
+		"unpack(svTHIS, arg)\n"
+		"  SV * svTHIS\n"
+		"  SV * arg\n"
 		"  PREINIT:\n"
 		"    STRLEN len;\n"
 		"    char * str;\n"
 		"\n"
-		"  CODE:\n"
+		"  CODE:\n");
+  GenerateTypemapInput(descriptor, printer, "THIS");
+  printer.Print(vars,
 		"    if ( THIS != NULL ) {\n"
 		"      str = SvPV(arg, len);\n"
 		"      if ( str != NULL ) {\n"
@@ -1106,17 +1188,44 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 
   printer.Print(vars,
 		"SV *\n"
-		"$classname$::pack()\n"
+		"pack(svTHIS)\n"
+		"  SV * svTHIS\n");
+
+  // This may be controlled by a custom option at some point.
+#if NO_ZERO_COPY
+  printer.Print(vars,
 		"  PREINIT:\n"
 		"    string output;\n"
-		"\n"
-		"  CODE:\n"
-		"    if ( THIS != NULL ) {\n"
+		"\n");
+#endif
+
+  printer.Print(vars,
+		"  CODE:\n");
+  GenerateTypemapInput(descriptor, printer, "THIS");
+  printer.Print(vars,
+		"    if ( THIS != NULL ) {\n");
+
+  // This may be controlled by a custom option at some point.
+
+#if NO_ZERO_COPY
+  printer.Print(vars,
 		"      if ( THIS->SerializeToString(&output) == true ) {\n"
 		"        RETVAL = newSVpv(output.c_str(), output.length());\n"
 		"      } else {\n"
 		"        RETVAL = Nullsv;\n"
-		"      }\n"
+		"      }\n");
+#else
+  vars["base"] = cpp::StripProto(descriptor->file()->name());
+  printer.Print(vars,
+		"      RETVAL = newSVpvn(\"\", 0);\n"
+		"      $base$_OutputStream os(RETVAL);\n"
+		"      if ( THIS->SerializeToZeroCopyStream(&os) != true ) {\n"
+		"        SvREFCNT_dec(RETVAL);\n"
+		"        RETVAL = Nullsv;\n"
+		"      }\n");
+#endif
+
+  printer.Print(vars,
 		"    } else {\n"
 		"      RETVAL = Nullsv;\n"
 		"    }\n"
@@ -1130,8 +1239,11 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 
   printer.Print(vars,
 		"int\n"
-		"$classname$::length()\n"
-		"  CODE:\n"
+		"length(svTHIS)\n"
+		"  SV * svTHIS\n"
+		"  CODE:\n");
+  GenerateTypemapInput(descriptor, printer, "THIS");
+  printer.Print(vars,
 		"    if ( THIS != NULL ) {\n"
 		"      RETVAL = THIS->ByteSize();\n"
 		"    } else {\n"
@@ -1151,8 +1263,10 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
   vars["field_count"] = field_count.str();
   printer.Print(vars,
 		"void\n"
-		"$classname$::fields()\n"
+		"fields(svTHIS)\n"
+		"  SV * svTHIS\n"
 		"  PPCODE:\n"
+		"    (void)svTHIS;\n"
 		"    EXTEND(SP, $field_count$);\n");
 
   for ( int i = 0; i < descriptor->field_count(); i++ ) {
@@ -1169,8 +1283,11 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 
   printer.Print(vars,
 		"SV *\n"
-		"$classname$::to_hashref()\n"
-		"  CODE:\n"
+		"to_hashref(svTHIS)\n"
+		"  SV * svTHIS\n"
+		"  CODE:\n");
+  GenerateTypemapInput(descriptor, printer, "THIS");
+  printer.Print(vars,
 		"    if ( THIS != NULL ) {\n"
 		"      HV * hv0 = newHV();\n"
 		"      $classname$ * msg0 = THIS;\n"
@@ -1259,29 +1376,34 @@ PerlXSGenerator::GenerateMessageXSPackage(const Descriptor* descriptor,
   // Constructor
 
   printer.Print(vars,
-		"$classname$ *\n"
+		"SV *\n"
 		"$classname$::new (...)\n"
+		"  PREINIT:\n"
+		"    $classname$ * rv = NULL;\n"
+		"\n"
 		"  CODE:\n"
 		"    if ( strcmp(CLASS,\"$package$\") ) {\n"
 		"      croak(\"invalid class %s\",CLASS);\n"
 		"    }\n"
-		"    if ( items == 2 ) {\n"
+		"    if ( items == 2 && ST(1) != Nullsv ) {\n"
 		"      if ( SvROK(ST(1)) && "
 		"SvTYPE(SvRV(ST(1))) == SVt_PVHV ) {\n"
-		"        RETVAL = $underscores$_from_hashref(ST(1));\n"
+		"        rv = $underscores$_from_hashref(ST(1));\n"
 		"      } else {\n"
 		"        STRLEN len;\n"
 		"        char * str;\n"
 		"\n"
-		"        RETVAL = new $classname$;\n"
+		"        rv = new $classname$;\n"
 		"        str = SvPV(ST(1), len);\n"
 		"        if ( str != NULL ) {\n"
-		"          RETVAL->ParseFromArray(str, len);\n"
+		"          rv->ParseFromArray(str, len);\n"
 		"        }\n"
 		"      }\n"
 		"    } else {\n"
-		"      RETVAL = new $classname$;\n"
+		"      rv = new $classname$;\n"
 		"    }\n"
+		"    RETVAL = newSV(0);\n"
+		"    sv_setref_pv(RETVAL, \"$package$\", (void *)rv);\n"
 		"\n"
 		"  OUTPUT:\n"
 		"    RETVAL\n"
@@ -1292,9 +1414,11 @@ PerlXSGenerator::GenerateMessageXSPackage(const Descriptor* descriptor,
 
   printer.Print(vars,
 		"void\n"
-		"$classname$::DESTROY()\n"
-		"  CODE:\n"
-		"    if ( THIS != NULL ) {\n"
+		"DESTROY(svTHIS)\n"
+		"  SV * svTHIS;\n"
+		"  CODE:\n");
+  GenerateTypemapInput(descriptor, printer, "THIS");
+  printer.Print("    if ( THIS != NULL ) {\n"
 		"      delete THIS;\n"
 		"    }\n"
 		"\n"
@@ -1313,60 +1437,27 @@ PerlXSGenerator::GenerateMessageXSPackage(const Descriptor* descriptor,
 
 
 void
-PerlXSGenerator::GenerateTypemapType(const Descriptor* descriptor,
-				     io::Printer& printer) const
+PerlXSGenerator::GenerateTypemapInput(const Descriptor* descriptor,
+				      io::Printer& printer,
+				      const string& svname) const
 {
-  for ( int i = 0; i < descriptor->nested_type_count(); i++ ) {
-    GenerateTypemapType(descriptor->nested_type(i), printer);
-  }
+  map<string, string> vars;
 
   string cn = cpp::ClassName(descriptor, true);
-  string tn = TypemapName(descriptor);
 
-  printer.Print("@class_name@ *  @typemap_name@\n",
-		"class_name", cn,
-		"typemap_name", tn);
-}
+  vars["classname"]   = cn;
+  vars["perlclass"]   = MessageClassName(descriptor);
+  vars["underscores"] = StringReplace(cn, "::", "__", true);
+  vars["svname"]      = svname;
 
-
-void
-PerlXSGenerator::GenerateTypemapInput(const Descriptor* descriptor,
-				      io::Printer& printer) const
-{
-  for ( int i = 0; i < descriptor->nested_type_count(); i++ ) {
-    GenerateTypemapInput(descriptor->nested_type(i), printer);
-    printer.Print("\n");
-  }
-
-  printer.Print(
-    "@typemapname@\n"
-    "  if ( sv_derived_from($arg,\\\"@classname@\\\") ) {\n"
-    "    IV tmp = SvIV((SV *)SvRV($arg));\n"
-    "    $var = INT2PTR($type, tmp);\n"
-    "  } else {\n"
-    "    croak(\\\"$var is not of type @classname@\\\");\n"
-    "  }\n",
-    "typemapname", TypemapName(descriptor),
-    "classname", MessageClassName(descriptor)
-  );
-}
-
-
-void
-PerlXSGenerator::GenerateTypemapOutput(const Descriptor* descriptor,
-				       io::Printer& printer) const
-{
-  for ( int i = 0; i < descriptor->nested_type_count(); i++ ) {
-    GenerateTypemapOutput(descriptor->nested_type(i), printer);
-    printer.Print("\n");
-  }
-
-  printer.Print(
-    "@typemapname@\n"
-    "  sv_setref_pv($arg, \\\"@classname@\\\", (void *)$var);\n",
-    "typemapname", TypemapName(descriptor),
-    "classname", MessageClassName(descriptor)
-  );
+  printer.Print(vars,
+		"    $classname$ * $svname$;\n"
+		"    if ( sv_derived_from(sv$svname$, \"$perlclass$\") ) {\n"
+		"      IV tmp = SvIV((SV *)SvRV(sv$svname$));\n"
+		"      $svname$ = INT2PTR($underscores$ *, tmp);\n"
+		"    } else {\n"
+		"      croak(\"$svname$ is not of type $perlclass$\");\n"
+		"    }\n");
 }
 
 
