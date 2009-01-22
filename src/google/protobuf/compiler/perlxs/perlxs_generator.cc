@@ -92,6 +92,7 @@ PerlXSGenerator::GenerateMessageXS(const Descriptor* descriptor,
 
   // ZeroCopyOutputStream implementation (for improved pack() performance)
 
+#ifndef NO_ZERO_COPY
   printer.Print("class $base$_OutputStream :\n"
 		"  public google::protobuf::io::ZeroCopyOutputStream {\n"
 		"public:\n"
@@ -117,6 +118,12 @@ PerlXSGenerator::GenerateMessageXS(const Descriptor* descriptor,
 		"    SvCUR_set(sv_, SvLEN(sv_) - count);\n"
 		"  }\n"
 		"\n"
+		"  void Sync() {\n"
+		"    if ( SvCUR(sv_) == 0 ) {\n"
+		"      SvCUR_set(sv_, len_);\n"
+		"    }\n"
+		"  }\n"
+		"\n"
 		"  int64_t ByteCount() const\n"
 		"  {\n"
 		"    return (int64_t)SvCUR(sv_);\n"
@@ -132,6 +139,7 @@ PerlXSGenerator::GenerateMessageXS(const Descriptor* descriptor,
 		"\n",
 		"base",
 		base);
+#endif
 
   // Typedefs, Statics, and XS packages
 
@@ -1222,7 +1230,9 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 		"      if ( THIS->SerializeToZeroCopyStream(&os) != true ) {\n"
 		"        SvREFCNT_dec(RETVAL);\n"
 		"        RETVAL = Nullsv;\n"
-		"      }\n");
+		"      } else {\n"
+		"        os.Sync();\n"
+		"      }\n"
 #endif
 
   printer.Print(vars,
