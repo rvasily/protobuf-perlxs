@@ -1232,7 +1232,7 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 		"        RETVAL = Nullsv;\n"
 		"      } else {\n"
 		"        os.Sync();\n"
-		"      }\n"
+		"      }\n");
 #endif
 
   printer.Print(vars,
