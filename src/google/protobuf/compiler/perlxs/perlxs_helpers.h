@@ -29,9 +29,6 @@ namespace cpp {
 
 namespace perlxs {
 
-// Returns the name used in the typemap.
-string TypemapName(const Descriptor* descriptor);
-
 // Returns the containing Perl module name for a message descriptor.
 string MessageModuleName(const Descriptor* descriptor);
 

@@ -14,21 +14,6 @@ namespace compiler {
 namespace perlxs {
 
 
-string
-TypemapName(const Descriptor* descriptor)
-{
-  string name = descriptor->full_name();
-
-  name = "T_" + StringReplace(name, ".", "_", true);
-  for ( string::iterator i = name.begin(); i != name.end(); ++i ) {
-    // toupper() changes based on locale.  We don't want this!
-    if ('a' <= *i && *i <= 'z') *i += 'A' - 'a';
-  }
-
-  return name;
-}
-
-
 // Returns the containing Perl module name for a message descriptor.
 
 string
