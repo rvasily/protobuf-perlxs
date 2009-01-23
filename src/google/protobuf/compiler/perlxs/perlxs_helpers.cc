@@ -382,11 +382,30 @@ FieldFromHashrefHelper(io::Printer& printer,
 		  "$msg$->$do$_$cppname$(uv$pdepth$);\n");
     break;
   case FieldDescriptor::CPPTYPE_STRING:
+    printer.Print("STRLEN len;\n"
+		  "char * str;\n");
+
+    if ( field->type() == FieldDescriptor::TYPE_STRING ) {
+      printer.Print("string sval;\n");
+    }
+
     printer.Print(vars,
-		  "$msg$->$do$_$cppname$(SvPV_nolen($var$));\n");
+		  "\n"
+		  "str = SvPV($var$, len);\n");
+
+    if ( field->type() == FieldDescriptor::TYPE_STRING ) {
+      printer.Print(vars,
+		    "sval.assign(str, len);\n"
+		    "$msg$->$do$_$cppname$(sval);\n");
+    } else if ( field->type() == FieldDescriptor::TYPE_BYTES ) {
+      printer.Print(vars,
+		    "$msg$->$do$_$cppname$(str, len);\n");
+    } else {
+      // Can't get here
+    }
     break;
   case FieldDescriptor::CPPTYPE_MESSAGE:
-    /* Should never get here. */
+  // Should never get here.
   default:
     break;
   }

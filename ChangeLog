@@ -1,3 +1,18 @@
+2009-01-23 version 0.7:
+
+  * Issue 4: String and bytes types are truncated when using NUL
+             characters due to char * handling in generated XS code
+             (Patch contributed by Jason Hord).
+
+  * Bugfix: Packed message that were multiples of 8 bytes long did
+            not have their Perl string length set correctly.
+
+  * Added an example (string_bytes) to check regressions on the
+    bugs fixed in this release.
+
+  * Added an example (package) showing the use of multiple top-level 
+    messages in the same package namespace.
+	
 2009-01-20 version 0.6:
 
   * Issue 3: Off-by-one error in XS generated code for initializing 

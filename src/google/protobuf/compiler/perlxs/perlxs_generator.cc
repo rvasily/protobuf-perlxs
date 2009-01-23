@@ -697,6 +697,7 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
   vars["perlclass"] = perlclass;
 
   FieldDescriptor::CppType fieldtype = field->cpp_type();
+  FieldDescriptor::Type    type      = field->type();
 
   if ( fieldtype == FieldDescriptor::CPPTYPE_MESSAGE ) {
     vars["fieldtype"]  = cpp::ClassName(field->message_type(), true);
@@ -915,11 +916,16 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
     break;
   case FieldDescriptor::CPPTYPE_STRING:
     vars["value"] = "sval";
-    printer.Print("  char *svVAL\n"
+    printer.Print("  SV *svVAL\n"
 		  "\n"
 		  "  PREINIT:\n"
-		  "    string sval = (svVAL) ? svVAL : \"\";\n"
-		  "\n"
+		  "    char * str;\n"
+		  "    STRLEN len;\n");
+    if ( type == FieldDescriptor::TYPE_STRING ) {
+      printer.Print(vars,
+		    "    string $value$;\n");
+    }
+    printer.Print("\n"
 		  "  CODE:\n");
     break;
   case FieldDescriptor::CPPTYPE_MESSAGE:
@@ -950,6 +956,16 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
 		    "    if ( $etype$_IsValid(svVAL) ) {\n"
 		    "      THIS->add_$cppname$(($etype$)svVAL);\n"
 		    "    }\n");
+    } else if ( fieldtype == FieldDescriptor::CPPTYPE_STRING ) {
+      printer.Print("    str = SvPV(svVAL, len);\n");
+      if ( type == FieldDescriptor::TYPE_BYTES ) {
+	printer.Print(vars,
+		      "    THIS->add_$cppname$(str, len);\n");
+      } else if ( type == FieldDescriptor::TYPE_STRING ) {
+	printer.Print(vars,
+		      "    $value$.assign(str, len);\n"
+		      "    THIS->add_$cppname$($value$);\n");
+      }
     } else {
       printer.Print(vars,
 		    "    THIS->add_$cppname$($value$);\n");
@@ -966,6 +982,18 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
 		    "    if ( $etype$_IsValid(svVAL) ) {\n"
 		    "      THIS->set_$cppname$(($etype$)svVAL);\n"
 		    "    }\n");
+    } else if ( fieldtype == FieldDescriptor::CPPTYPE_STRING ) {
+      printer.Print("    str = SvPV(svVAL, len);\n");
+      if ( type == FieldDescriptor::TYPE_STRING ) {
+	printer.Print(vars,
+		      "    sval.assign(str, len);\n"
+		      "    THIS->set_$cppname$($value$);\n");
+      } else if ( type == FieldDescriptor::TYPE_BYTES ) {
+	printer.Print(vars,
+		      "    THIS->set_$cppname$(str, len);\n");
+      } else {
+	// Can't get here
+      }
     } else {
       printer.Print(vars,
 		    "    THIS->set_$cppname$($value$);\n");
