@@ -9,5 +9,6 @@ protoxs_LDADD = -lprotoc -lprotobuf
 
 noinst_HEADERS = \
 	google/protobuf/compiler/perlxs/perlxs_generator.h \
-	google/protobuf/compiler/perlxs/perlxs_helpers.h
+	google/protobuf/compiler/perlxs/perlxs_helpers.h \
+	google/protobuf/compiler/perlxs/perlxs_config.h
 

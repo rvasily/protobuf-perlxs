@@ -2,6 +2,7 @@
 #include <sstream>
 #include <google/protobuf/compiler/perlxs/perlxs_generator.h>
 #include <google/protobuf/compiler/perlxs/perlxs_helpers.h>
+#include <google/protobuf/compiler/perlxs/perlxs_config.h>
 #include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/io/printer.h>
@@ -48,6 +49,11 @@ PerlXSGenerator::Generate(const FileDescriptor* file,
   return true;
 }
 
+const string&
+PerlXSGenerator::GetVersionInfo() const
+{
+    return PackageString;
+}
 
 void
 PerlXSGenerator::GenerateMessageXS(const Descriptor* descriptor,

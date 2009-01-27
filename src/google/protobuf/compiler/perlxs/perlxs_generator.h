@@ -38,6 +38,8 @@ class LIBPROTOC_EXPORT PerlXSGenerator : public CodeGenerator {
 			OutputDirectory* output_directory,
 			string* error) const;
   
+ const string& GetVersionInfo() const;
+
  private:
   GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(PerlXSGenerator);
 

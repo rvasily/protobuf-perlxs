@@ -2,7 +2,6 @@
 #include <google/protobuf/compiler/cpp/cpp_generator.h>
 #include <google/protobuf/compiler/perlxs/perlxs_generator.h>
 
-
 int main(int argc, char* argv[]) {
   google::protobuf::compiler::CommandLineInterface cli;
 
@@ -17,6 +16,8 @@ int main(int argc, char* argv[]) {
   google::protobuf::compiler::perlxs::PerlXSGenerator perlxs_generator;
   cli.RegisterGenerator("--out", &perlxs_generator,
                         "Generate Perl/XS source files.");
-  
+
+  cli.SetVersionInfo(perlxs_generator.GetVersionInfo());
+
   return cli.Run(argc, argv);
 }

@@ -23,6 +23,7 @@ fi
 AC_CONFIG_FILES([
 Makefile
 src/Makefile
+src/google/protobuf/compiler/perlxs/perlxs_config.h
 examples/big/Makefile.PL
 examples/embedded/Makefile.PL
 examples/package/Makefile.PL
