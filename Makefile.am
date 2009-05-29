@@ -10,6 +10,10 @@ EXTRA_DIST = \
 	examples/embedded/error.proto \
 	examples/embedded/README \
 	examples/embedded/test.pl \
+	examples/error/Makefile.PL.in \
+	examples/error/error.proto \
+	examples/error/README \
+	examples/error/test.pl \
 	examples/package/Makefile.PL.in \
 	examples/package/Messages.pm \
 	examples/package/Messages.xs \

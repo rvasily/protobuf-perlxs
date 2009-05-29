@@ -1,3 +1,7 @@
+2009-05-28 version 0.8:
+
+  * Issue 5: eval { } doesn't catch protobuf->pack() fatal errors
+
 2009-01-23 version 0.7:
 
   * Issue 4: String and bytes types are truncated when using NUL

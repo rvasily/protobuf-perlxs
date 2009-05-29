@@ -9,10 +9,6 @@
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/io/zero_copy_stream.h>
 
-
-//#define NO_ZERO_COPY 1
-
-
 namespace google {
 namespace protobuf {
 namespace compiler {
@@ -98,7 +94,6 @@ PerlXSGenerator::GenerateMessageXS(const Descriptor* descriptor,
 
   // ZeroCopyOutputStream implementation (for improved pack() performance)
 
-#ifndef NO_ZERO_COPY
   printer.Print("class $base$_OutputStream :\n"
 		"  public google::protobuf::io::ZeroCopyOutputStream {\n"
 		"public:\n"
@@ -145,7 +140,6 @@ PerlXSGenerator::GenerateMessageXS(const Descriptor* descriptor,
 		"\n",
 		"base",
 		base);
-#endif
 
   // Typedefs, Statics, and XS packages
 
@@ -1247,27 +1241,24 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
   printer.Print(vars,
 		"    if ( THIS != NULL ) {\n");
 
-  // This may be controlled by a custom option at some point.
-
-#if NO_ZERO_COPY
-  printer.Print(vars,
-		"      if ( THIS->SerializeToString(&output) == true ) {\n"
-		"        RETVAL = newSVpv(output.c_str(), output.length());\n"
-		"      } else {\n"
-		"        RETVAL = Nullsv;\n"
-		"      }\n");
-#else
   vars["base"] = cpp::StripProto(descriptor->file()->name());
+
   printer.Print(vars,
 		"      RETVAL = newSVpvn(\"\", 0);\n"
 		"      $base$_OutputStream os(RETVAL);\n"
-		"      if ( THIS->SerializeToZeroCopyStream(&os) != true ) {\n"
-		"        SvREFCNT_dec(RETVAL);\n"
-		"        RETVAL = Nullsv;\n"
+		"      if ( THIS->IsInitialized() ) {\n"
+		"        if ( THIS->SerializePartialToZeroCopyStream(&os)"
+		"!= true ) {\n"
+		"          SvREFCNT_dec(RETVAL);\n"
+		"          RETVAL = Nullsv;\n"
+		"        } else {\n"
+		"          os.Sync();\n"
+		"        }\n"
 		"      } else {\n"
-		"        os.Sync();\n"
+		"        croak(\"Can't serialize message of type "
+		"'$perlclass$' because it is missing required fields: %s\",\n"
+		"              THIS->InitializationErrorString().c_str());\n"
 		"      }\n");
-#endif
 
   printer.Print(vars,
 		"    } else {\n"

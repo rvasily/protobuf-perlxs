@@ -1,5 +1,4 @@
 * More sophisticated examples (use of shared libraries, etc)
 * Synopsis sections for serializing and unserializing messages
-* Modify generated code such that typemap files are unnecessary
 * Extensions
 * RPC interface

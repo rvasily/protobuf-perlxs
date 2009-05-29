@@ -1,4 +1,4 @@
-AC_INIT([protobuf-perlxs], [0.7], [dave@daveb.net])
+AC_INIT([protobuf-perlxs], [0.8], [dave@daveb.net])
 AM_INIT_AUTOMAKE([-Wall])
 AC_PROG_CXX
 AC_PROG_CC
@@ -26,6 +26,7 @@ src/Makefile
 src/google/protobuf/compiler/perlxs/perlxs_config.h
 examples/big/Makefile.PL
 examples/embedded/Makefile.PL
+examples/error/Makefile.PL
 examples/package/Makefile.PL
 examples/simple/Makefile.PL
 examples/string_bytes/Makefile.PL
