@@ -1,3 +1,8 @@
+2010-03-09 version 1.0:
+
+  * Bugfix: generated code for enums with --perlxs-package set was
+	    incorrect.
+
 2010-03-09 version 0.9:
 
   * Issue 6: optimize_for = LITE_RUNTIME causes compilation errors

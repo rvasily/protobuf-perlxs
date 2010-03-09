@@ -1859,10 +1859,10 @@ PerlXSGenerator::FieldFromHashrefHelper(io::Printer& printer,
 		  "$msg$->$do$_$cppname$(SvIV($var$));\n");
     break;
   case FieldDescriptor::CPPTYPE_ENUM:
-    vars["type"] = EnumClassName(field->enum_type());
+    vars["etype"] = cpp::ClassName(field->enum_type(), true);
     printer.Print(vars,
 		  "$msg$->$do$_$cppname$"
-		  "(($type$)SvIV($var$));\n");
+		  "(($etype$)SvIV($var$));\n");
     break;
   case FieldDescriptor::CPPTYPE_UINT32:
     printer.Print(vars,
