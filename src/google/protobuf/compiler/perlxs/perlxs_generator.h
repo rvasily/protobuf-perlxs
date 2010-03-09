@@ -1,10 +1,12 @@
 #ifndef GOOGLE_PROTOBUF_COMPILER_PERLXS_GENERATOR_H__
 #define GOOGLE_PROTOBUF_COMPILER_PERLXS_GENERATOR_H__
 
+#include <iostream>
 #include <string>
 #include <vector>
 #include <map>
 #include <set>
+#include <google/protobuf/descriptor.h>
 #include <google/protobuf/compiler/code_generator.h>
 #include <google/protobuf/stubs/common.h>
 
@@ -20,6 +22,19 @@ class ServiceDescriptor;
 namespace io { class Printer; }
 
 namespace compiler {
+
+// A couple of the C++ code generator headers are not installed, but
+// we need to call into that code in a few places.  We duplicate the
+// function prototypes here.
+
+namespace cpp {
+  extern string ClassName(const Descriptor* descriptor, bool qualified);
+  extern string ClassName(const EnumDescriptor* enum_descriptor, 
+			  bool qualified);
+  extern string FieldName(const FieldDescriptor* field);
+  extern string StripProto(const string& filename);
+}
+
 namespace perlxs {
 
 // CodeGenerator implementation for generated Perl/XS protocol buffer
@@ -38,7 +53,8 @@ class LIBPROTOC_EXPORT PerlXSGenerator : public CodeGenerator {
 			OutputDirectory* output_directory,
 			string* error) const;
   
- const string& GetVersionInfo() const;
+  const string& GetVersionInfo() const;
+  bool ProcessOption(const string& option);
 
  private:
   GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(PerlXSGenerator);
@@ -91,11 +107,60 @@ class LIBPROTOC_EXPORT PerlXSGenerator : public CodeGenerator {
   void GenerateTypemapInput(const Descriptor* descriptor,
 			    io::Printer& printer,
 			    const string& svname) const;
+
+  string MessageModuleName(const Descriptor* descriptor) const;
+
+  string MessageClassName(const Descriptor* descriptor) const;
+
+  string EnumClassName(const EnumDescriptor* descriptor) const;
+
+  string PackageName(const string& name, const string& package) const;
+
+  void PerlSVGetHelper(io::Printer& printer,
+		       const map<string, string>& vars,
+		       FieldDescriptor::CppType fieldtype,
+		       int depth) const;
+
+  void PODPrintEnumValue(const EnumValueDescriptor *value,
+			 io::Printer& printer) const;
+
+  string PODFieldTypeString(const FieldDescriptor* field) const;
+
+  void StartFieldToHashref(const FieldDescriptor * field,
+			   io::Printer& printer,
+			   map<string, string>& vars,
+			   int depth) const;
+
+  void FieldToHashrefHelper(io::Printer& printer,
+			    map<string, string>& vars,
+			    const FieldDescriptor* field) const;
+
+  void EndFieldToHashref(const FieldDescriptor * field,
+			 io::Printer& printer,
+			 map<string, string>& vars,
+			 int depth) const;
+
+  void MessageToHashref(const Descriptor * descriptor,
+			io::Printer& printer,
+			map<string, string>& vars,
+			int depth) const;
+
+  void FieldFromHashrefHelper(io::Printer& printer,
+			      map<string, string>& vars,
+			      const FieldDescriptor * field) const;
+
+  void MessageFromHashref(const Descriptor * descriptor,
+			  io::Printer& printer,
+			  map<string, string>& vars,
+			  int depth) const;
+
+ private:
+  // --perlxs-package option (if given)
+  std::string perlxs_package_;
 };
  
 }  // namespace perlxs
 }  // namespace compiler
 }  // namespace protobuf
-
 }  // namespace google
 #endif  // GOOGLE_PROTOBUF_COMPILER_PERLXS_GENERATOR_H__

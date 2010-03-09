@@ -1,3 +1,17 @@
+2010-03-09 version 0.9:
+
+  * Issue 6: optimize_for = LITE_RUNTIME causes compilation errors
+
+  * Bugfix: Added AC_LANG([C++]) to configure.ac, to fix broken
+	    detection of protobuf headers.
+
+  * Compatibility: Added -lpthread, for linking with more recent
+	           versions of protobuf libraries.
+
+  * Feature: Added support for the --perlxs-package option (not yet
+	     documented).  Use this to override the package option
+	     value in a .proto file during Perl/XS code generation.
+	
 2009-05-28 version 0.8:
 
   * Issue 5: eval { } doesn't catch protobuf->pack() fatal errors

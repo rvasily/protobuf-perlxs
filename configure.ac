@@ -1,5 +1,6 @@
-AC_INIT([protobuf-perlxs], [0.8], [dave@daveb.net])
+AC_INIT([protobuf-perlxs], [0.9], [dave@daveb.net])
 AM_INIT_AUTOMAKE([-Wall])
+AC_LANG([C++])
 AC_PROG_CXX
 AC_PROG_CC
 AC_PROG_INSTALL
@@ -15,7 +16,7 @@ if test "$with_protobuf" != no; then
     CPPFLAGS="$CPPFLAGS -I$with_protobuf/include"
     LDFLAGS="$LDFLAGS -L$with_protobuf/lib"
   else
-    AC_CHECK_HEADER(google/protobuf/stubs/common.h,,
+    AC_CHECK_HEADER([google/protobuf/stubs/common.h],,
     [AC_MSG_ERROR([protobuf headers are required.  Try using the --with-protobuf option.])])
   fi
 fi
