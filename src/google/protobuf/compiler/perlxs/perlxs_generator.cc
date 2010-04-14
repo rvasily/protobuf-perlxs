@@ -1042,7 +1042,9 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
   string cn = cpp::ClassName(descriptor, true);
   string un = StringReplace(cn, "::", "__", true);
 
+#if (GOOGLE_PROTOBUF_VERSION >= 2002000)
   mode = descriptor->file()->options().optimize_for();
+#endif // GOOGLE_PROTOBUF_VERSION
 
   vars["classname"]   = classname;
   vars["perlclass"]   = MessageClassName(descriptor);
@@ -1775,7 +1777,8 @@ PerlXSGenerator::EndFieldToHashref(const FieldDescriptor * field,
 				   map<string, string>& vars,
 				   int depth) const
 {
-  vars["cppname"] = cpp::FieldName(field);
+  vars["field"] = field->name();
+
   SetupDepthVars(vars, depth);
 
   if ( field->is_repeated() ) {
@@ -1784,17 +1787,17 @@ PerlXSGenerator::EndFieldToHashref(const FieldDescriptor * field,
     printer.Outdent();
     printer.Print(vars,
 		  "}\n"
-		  "hv_store(hv$pdepth$, \"$cppname$\", "
-		  "sizeof(\"$cppname$\") - 1, sv$pdepth$, 0);\n");
+		  "hv_store(hv$pdepth$, \"$field$\", "
+		  "sizeof(\"$field$\") - 1, sv$pdepth$, 0);\n");
   } else {
     if ( field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE ) {
       printer.Print(vars,
-		    "hv_store(hv$pdepth$, \"$cppname$\", "
-		    "sizeof(\"$cppname$\") - 1, sv$depth$, 0);\n");
+		    "hv_store(hv$pdepth$, \"$field$\", "
+		    "sizeof(\"$field$\") - 1, sv$depth$, 0);\n");
     } else {
       printer.Print(vars,
-		    "hv_store(hv$pdepth$, \"$cppname$\", "
-		    "sizeof(\"$cppname$\") - 1, sv$pdepth$, 0);\n");
+		    "hv_store(hv$pdepth$, \"$field$\", "
+		    "sizeof(\"$field$\") - 1, sv$pdepth$, 0);\n");
     }
   }
   printer.Outdent();

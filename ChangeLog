@@ -1,3 +1,11 @@
+2010-04-01 version 1.1:
+
+  * Bugfix: protobuf-perlxs 1.0 could not be compiled with a protobuf
+	    version earlier than 2.2.0.
+
+  * Bugfix: to_hashref() lower-cased field names.  Thanks to Nacho
+	    Gutierrez for the patch.
+
 2010-03-09 version 1.0:
 
   * Bugfix: generated code for enums with --perlxs-package set was
