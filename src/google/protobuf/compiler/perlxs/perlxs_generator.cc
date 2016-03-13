@@ -18,12 +18,12 @@ namespace perlxs {
 PerlXSGenerator::PerlXSGenerator() {}
 PerlXSGenerator::~PerlXSGenerator() {}
 
-  
+
 bool
 PerlXSGenerator::Generate(const FileDescriptor* file,
 			  const string& parameter,
 			  OutputDirectory* outdir,
-			  string* error) const 
+			  string* error) const
 {
   // Each top-level message get its own XS source file, Perl module,
   // and typemap.  Each top-level enum gets its own Perl module.  The
@@ -43,8 +43,154 @@ PerlXSGenerator::Generate(const FileDescriptor* file,
     GenerateEnumModule(enum_type, outdir);
   }
 
+  if (file->service_count() > 0) {
+    GenerateServiceModule(file,outdir);
+  }
+
   return true;
 }
+
+// Generate services
+void PerlXSGenerator::GenerateServiceModule(const FileDescriptor* file,
+																						OutputDirectory* outdir) const
+{
+  for (int i = 0; i < file->service_count(); ++i)
+	{
+		const ServiceDescriptor *service = file->service(i);
+    string filename = service->name() + ".pm";
+    scoped_ptr<io::ZeroCopyOutputStream> output(outdir->Open(filename));
+    io::Printer printer(output.get(), '*'); // '$' works well in the .xs file
+
+		map<string, string> vars;
+	  vars["package"]   = PackageName(service->full_name(), service->name());
+
+		printer.Print(vars,
+			"package *package*;\n"
+			"use base Grpc::Client::BaseStub;\n"
+			"\n"
+		);
+
+		for (int j = 0; j < file->message_type_count(); ++j)
+		{
+				map<string, string> uvars;
+				uvars["module"] = MessageModuleName(file->message_type(j));
+				printer.Print(uvars,"use *module*;\n");
+		}
+
+		printer.Print("\n");
+
+		for (int k = 0; k < service->method_count(); ++k)
+		{
+			const MethodDescriptor *method = service->method(i);
+
+			map<string, string> mvars;
+			mvars["base"]        = service->full_name();
+			mvars["full_name"]   = method->full_name();
+			mvars["name"]        = method->name();
+			mvars["input_type"]  = method->input_type()->name();
+			mvars["output_type"] = method->output_type()->name();
+
+			mvars["unmarshall"] =
+						"    my $unmarshall = sub {\n"
+						"        my $data = shift;\n"
+						"        my $d = new "+PackageName(method->output_type()->full_name(), method->output_type()->name())+"();\n"
+						"        if ($d->unpack($data)) { return $d; }\n"
+						"        warn \"failed unpacking protobuf data\";"
+						"        return undef;\n"
+						"    }\n";
+
+			if (method->client_streaming()) {
+				if(method->server_streaming()) {
+					printer.Print(mvars,
+						"sub *name*\n"
+						"{\n"
+						"    my $self     = shift;\n"
+						"    my \%param    = @_;\n"
+						"    my $metadata = $param{metadata};\n"
+						"    my $options  = $param{options};\n"
+						"\n"
+						"*unmarshall*"
+						"\n"
+						"    return $self->_bidiRequest(\n"
+						" 											method      => \"*full_name*/*name*\",\n"
+						"                       deserialize => $unmarshall,\n"
+						" 											metadata    => $metadata,\n"
+					  "                       options     => $options);\n"
+						"}\n"
+						"\n"
+					);
+				} else {
+					printer.Print(mvars,
+						"sub *name*\n"
+						"{\n"
+						"    my $self     = shift;\n"
+						"    my \%param    = @_;\n"
+						"    my $metadata = $param{metadata};\n"
+						"    my $options  = $param{options};\n"
+						"\n"
+						"*unmarshall*"
+						"\n"
+						"    return $self->_clientStreamRequest(\n"
+						"                       method      => \"*full_name*/*name*\",\n"
+						"                       deserialize => $unmarshall,\n"
+						"                       metadata    => $metadata,\n"
+					  "                       options     => $options);\n"
+						"}\n"
+						"\n"
+					);
+				}
+			} else {
+				if(method->server_streaming()) {
+					printer.Print(mvars,
+						"sub *name*\n"
+						"{\n"
+						"    my $self     = shift;\n"
+						"    my \%param    = @_;\n"
+						"    my $argument = $param{argument}; ## *input_type*\n"
+						"    my $metadata = $param{metadata};\n"
+						"    my $options  = $param{options};\n"
+						"\n"
+						"*unmarshall*"
+						"\n"
+						"    return $self->_serverStreamRequest(\n"
+						"                       method      => \"*full_name*/*name*\",\n"
+						"                       deserialize => $unmarshall,\n"
+						"                       argument    => $argument,\n"
+						"                       metadata    => $metadata,\n"
+					  "                       options     => $options);\n"
+						"}\n"
+						"\n"
+					);
+				} else {
+					printer.Print(mvars,
+						"sub *name*\n"
+						"{\n"
+						"    my $self     = shift;\n"
+						"    my \%param    = @_;\n"
+						"    my $argument = $param{argument}; ## *input_type*\n"
+						"    my $metadata = $param{metadata};\n"
+						"    my $options  = $param{options};\n"
+						"\n"
+						"*unmarshall*"
+						"\n"
+						"    return $self->_simpleRequest(\n"
+						"                       method      => \"*full_name*/*name*\",\n"
+						"                       deserialize => $unmarshall,\n"
+						"                       argument    => $argument,\n"
+						"                       metadata    => $metadata,\n"
+					  "                       options     => $options);\n"
+						"}\n"
+						"\n"
+					);
+				}
+			}
+		}
+
+    printer.Print("1;\n\n");
+  }
+}
+
+
 
 const string&
 PerlXSGenerator::GetVersionInfo() const
@@ -285,7 +431,7 @@ PerlXSGenerator::GenerateMessagePOD(const Descriptor* descriptor,
   // List of classes
 
   GenerateDescriptorClassNamePOD(descriptor, printer);
-  
+
   printer.Print("\n"
 		"=back\n"
 		"\n");
@@ -319,7 +465,7 @@ PerlXSGenerator::GenerateDescriptorClassNamePOD(const Descriptor* descriptor,
 		  "A wrapper around the *enum* enum\n"
 		  "\n",
 		  "name", EnumClassName(descriptor->enum_type(i)),
-		  "enum", descriptor->enum_type(i)->full_name());    
+		  "enum", descriptor->enum_type(i)->full_name());
   }
 
   for ( int i = 0; i < descriptor->nested_type_count(); i++ ) {
@@ -393,12 +539,12 @@ PerlXSGenerator::GenerateDescriptorMethodPOD(const Descriptor* descriptor,
   // Common message methods
 
   printer.Print(vars,
-		"=item B<$*value*2-E<gt>copy_from($*value*1)>\n"	
+		"=item B<$*value*2-E<gt>copy_from($*value*1)>\n"
 		"\n"
 		"Copies the contents of C<*value*1> into C<*value*2>.\n"
 		"C<*value*2> is another instance of the same message type.\n"
 		"\n"
-		"=item B<$*value*2-E<gt>copy_from($hashref)>\n"	
+		"=item B<$*value*2-E<gt>copy_from($hashref)>\n"
 		"\n"
 		"Copies the contents of C<hashref> into C<*value*2>.\n"
 		"C<hashref> is a Data::Dumper-style representation of an\n"
@@ -409,7 +555,7 @@ PerlXSGenerator::GenerateDescriptorMethodPOD(const Descriptor* descriptor,
 		"Merges the contents of C<*value*1> into C<*value*2>.\n"
 		"C<*value*2> is another instance of the same message type.\n"
 		"\n"
-		"=item B<$*value*2-E<gt>merge_from($hashref)>\n"	
+		"=item B<$*value*2-E<gt>merge_from($hashref)>\n"
 		"\n"
 		"Merges the contents of C<hashref> into C<*value*2>.\n"
 		"C<hashref> is a Data::Dumper-style representation of an\n"
@@ -613,7 +759,7 @@ PerlXSGenerator::GenerateEnumModule(const EnumDescriptor* enum_descriptor,
   for ( int i = 0; i < enum_descriptor->value_count(); i++ ) {
     PODPrintEnumValue(enum_descriptor->value(i), printer);
   }
-  
+
   printer.Print(vars,
 		"\n"
 		"=back\n"
@@ -686,7 +832,7 @@ PerlXSGenerator::GenerateMessageStatics(const Descriptor* descriptor,
   vars["underscores"] = un;
 
   // from_hashref static helper
-  
+
   printer.Print(vars,
 		"static $classname$ *\n"
 		"$underscores$_from_hashref ( SV * sv0 )\n"
@@ -1105,7 +1251,7 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 		"    }\n"
 		"\n"
 		"\n");
-  
+
   // clear
 
   printer.Print(vars,
@@ -1802,7 +1948,7 @@ PerlXSGenerator::EndFieldToHashref(const FieldDescriptor * field,
   }
   printer.Outdent();
   printer.Print("}\n");
-}  
+}
 
 void
 PerlXSGenerator::MessageToHashref(const Descriptor * descriptor,
@@ -1820,7 +1966,7 @@ PerlXSGenerator::MessageToHashref(const Descriptor * descriptor,
 
     vars["field"] = field->name();
     vars["cppname"] = cpp::FieldName(field);
-    
+
     StartFieldToHashref(field, printer, vars, depth);
 
     if ( fieldtype == FieldDescriptor::CPPTYPE_MESSAGE ) {

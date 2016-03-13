@@ -29,7 +29,7 @@ namespace compiler {
 
 namespace cpp {
   extern string ClassName(const Descriptor* descriptor, bool qualified);
-  extern string ClassName(const EnumDescriptor* enum_descriptor, 
+  extern string ClassName(const EnumDescriptor* enum_descriptor,
 			  bool qualified);
   extern string FieldName(const FieldDescriptor* field);
   extern string StripProto(const string& filename);
@@ -52,7 +52,7 @@ class LIBPROTOC_EXPORT PerlXSGenerator : public CodeGenerator {
 			const string& parameter,
 			OutputDirectory* output_directory,
 			string* error) const;
-  
+
   const string& GetVersionInfo() const;
   bool ProcessOption(const string& option);
 
@@ -70,6 +70,9 @@ class LIBPROTOC_EXPORT PerlXSGenerator : public CodeGenerator {
   void GenerateMessageModule(const Descriptor* descriptor,
 			     OutputDirectory* outdir) const;
 
+  void GenerateServiceModule(const FileDescriptor* file,
+ 																						OutputDirectory* outdir) const;
+
   void GenerateMessagePOD(const Descriptor* descriptor,
 			  OutputDirectory* outdir) const;
 
@@ -81,7 +84,7 @@ class LIBPROTOC_EXPORT PerlXSGenerator : public CodeGenerator {
 
   void GenerateEnumModule(const EnumDescriptor* enum_descriptor,
 			  OutputDirectory* outdir) const;
-  
+
   void GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
 				       io::Printer& printer,
 				       const string& classname) const;
@@ -100,7 +103,7 @@ class LIBPROTOC_EXPORT PerlXSGenerator : public CodeGenerator {
 
   void GenerateMessageStatics(const Descriptor* descriptor,
 			      io::Printer& printer) const;
-  
+
   void GenerateMessageXSPackage(const Descriptor* descriptor,
 				io::Printer& printer) const;
 
@@ -158,7 +161,7 @@ class LIBPROTOC_EXPORT PerlXSGenerator : public CodeGenerator {
   // --perlxs-package option (if given)
   std::string perlxs_package_;
 };
- 
+
 }  // namespace perlxs
 }  // namespace compiler
 }  // namespace protobuf
