@@ -60,15 +60,18 @@ class LIBPROTOC_EXPORT PerlXSGenerator : public CodeGenerator {
   GOOGLE_DISALLOW_EVIL_CONSTRUCTORS(PerlXSGenerator);
 
  private:
+  string PerlPackageName(const string& name) const;
+  string PerlPackageFile(const string& name) const;
+  string PerlPackageModule(const string& name) const;
+
+  void GenerateMakefilePL(const FileDescriptor* file,
+													OutputDirectory* outdir) const;
+
   void GenerateXS(const FileDescriptor* file,
-		  OutputDirectory* output_directory,
-		  string& base) const;
+		              OutputDirectory* output_directory) const;
 
-  void GenerateMessageXS(const Descriptor* descriptor,
-			 OutputDirectory* outdir) const;
-
-  void GenerateMessageModule(const Descriptor* descriptor,
-			     OutputDirectory* outdir) const;
+  void GenerateModule(const FileDescriptor* file,
+                  		OutputDirectory* outdir) const;
 
   void GenerateServiceModule(const FileDescriptor* file,
  																						OutputDirectory* outdir) const;

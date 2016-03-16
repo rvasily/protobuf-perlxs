@@ -15,9 +15,41 @@ namespace protobuf {
 namespace compiler {
 namespace perlxs {
 
-PerlXSGenerator::PerlXSGenerator() {}
+PerlXSGenerator::PerlXSGenerator() {
+	perlxs_package_ = "ProtobufXS"; // default perlxs_package name
+}
 PerlXSGenerator::~PerlXSGenerator() {}
 
+// helper method to convert string to a valid perl package name
+string
+PerlXSGenerator::PerlPackageModule(const string& name) const
+{
+  string basename = cpp::StripProto(name);
+	basename = StringReplace(basename, "-", "_", true);
+	basename = StringReplace(basename, "/", "::", true);
+	basename = StringReplace(basename, ".", "::", true);
+  return basename;
+}
+
+// helper method to perl package name string to a filename
+string
+PerlXSGenerator::PerlPackageFile(const string& name) const
+{
+  string basename = cpp::StripProto(name);
+	basename = StringReplace(basename, "_", "-", true);
+	basename = StringReplace(basename, "::", "/", true);
+	return basename;
+}
+
+// helper method to perl package name string to a name
+string
+PerlXSGenerator::PerlPackageName(const string& name) const
+{
+  string basename = PerlPackageModule(name);
+	int lastindex = basename.find_last_of(":");
+	if (lastindex) return basename.substr(lastindex+1);
+	return basename;
+}
 
 bool
 PerlXSGenerator::Generate(const FileDescriptor* file,
@@ -25,29 +57,210 @@ PerlXSGenerator::Generate(const FileDescriptor* file,
 			  OutputDirectory* outdir,
 			  string* error) const
 {
-  // Each top-level message get its own XS source file, Perl module,
-  // and typemap.  Each top-level enum gets its own Perl module.  The
-  // files are generated in the perlxs_out directory.
+	GenerateMakefilePL(file, outdir);
+	GenerateXS(file,outdir);
+	GenerateModule(file,outdir);
 
-  for ( int i = 0; i < file->message_type_count(); i++ ) {
-    const Descriptor* message_type = file->message_type(i);
-
-    GenerateMessageXS(message_type, outdir);
-    GenerateMessagePOD(message_type, outdir);
-    GenerateMessageModule(message_type, outdir);
+	if (file->service_count() > 0) {
+    GenerateServiceModule(file,outdir);
   }
 
   for ( int i = 0; i < file->enum_type_count(); i++ ) {
     const EnumDescriptor* enum_type = file->enum_type(i);
-
     GenerateEnumModule(enum_type, outdir);
   }
 
-  if (file->service_count() > 0) {
-    GenerateServiceModule(file,outdir);
+  return true;
+}
+
+const string&
+PerlXSGenerator::GetVersionInfo() const
+{
+    return PackageString;
+}
+
+bool
+PerlXSGenerator::ProcessOption(const string& option)
+{
+  size_t equals;
+  bool   recognized = false;
+
+  equals = option.find_first_of('=');
+  if (equals != string::npos) {
+    std::string name = option.substr(0, equals);
+    std::string value;
+
+    if (option.length() > equals) {
+      value = option.substr(equals + 1);
+    }
+
+    // Right now, we only recognize the --perlxs-package option.
+    if (name == "--perlxs-package") {
+      perlxs_package_ = value;
+      recognized = true;
+    }
   }
 
-  return true;
+  return recognized;
+}
+
+// Generate services
+void PerlXSGenerator::GenerateMakefilePL(const FileDescriptor* file,
+																				 OutputDirectory* outdir) const
+{
+    string filename = "Makefile.PL";
+    scoped_ptr<io::ZeroCopyOutputStream> output(outdir->Open(filename));
+    io::Printer printer(output.get(), '*');
+
+		map<string, string> vars;
+		vars["perlxs_package"] = perlxs_package_;
+		vars["perlxs_file"]    = PerlPackageFile(perlxs_package_);
+		vars["proto"]          = cpp::StripProto(file->name());
+		vars["proto_package_module"]  = PerlPackageModule(file->name());
+		vars["proto_package_file"]    = PerlPackageFile(file->name());
+		vars["perlxs_package_name"]   = PerlPackageName(perlxs_package_);
+		vars["perlxs_package_module"] = PerlPackageModule(perlxs_package_);
+
+		printer.Print(vars,
+			"use ExtUtils::MakeMaker;\n"
+			"WriteMakefile(\n"
+			"              'NAME'          => '*perlxs_package_name*::*proto_package_module*',\n"
+			"              'VERSION_FROM'  => 'lib/*perlxs_file*/*proto_package_file*.pm',\n"
+			"              'OPTIMIZE'      => '-O2 -Wall',\n"
+			"              'CC'            => 'g++',\n"
+			"              'LD'            => '$(CC)',\n"
+			"              'C'             => [ '*perlxs_package_name*.c','*proto*.pb.cc' ],\n"
+			"              'CCFLAGS'       => '-fno-strict-aliasing',\n"
+			"              'OBJECT'        => '$(O_FILES)',\n"
+			"              'INC'           => '-I.',\n"
+			"              'LIBS'          => [' -lprotobuf'],\n"
+			"              'XSOPT'         => '-C++',\n"
+			"             );\n"
+			"\n"
+		);
+
+}
+
+
+void
+PerlXSGenerator::GenerateXS(const FileDescriptor* file,
+													  OutputDirectory* outdir) const
+{
+	string filename = PerlPackageName(perlxs_package_)+".xs";
+	scoped_ptr<io::ZeroCopyOutputStream> output(outdir->Open(filename));
+	io::Printer printer(output.get(), '$');
+
+	map<string, string> vars;
+	vars["perlxs_package"] = perlxs_package_;
+	vars["perlxs_file"]    = PerlPackageFile(perlxs_package_);
+	vars["proto"]          = cpp::StripProto(file->name());
+	vars["proto_package_module"]  = PerlPackageModule(file->name());
+	vars["perlxs_package_name"]   = PerlPackageName(perlxs_package_);
+	vars["perlxs_package_module"] = PerlPackageModule(perlxs_package_);
+
+  // Boilerplate at the top of the file.
+
+  printer.Print(vars,
+		"#ifdef __cplusplus\n"
+		"extern \"C\" {\n"
+		"#endif\n"
+		"#include \"EXTERN.h\"\n"
+		"#include \"perl.h\"\n"
+		"#include \"XSUB.h\"\n"
+		"#ifdef __cplusplus\n"
+		"}\n"
+		"#endif\n"
+		"#ifdef do_open\n"
+		"#undef do_open\n"
+		"#endif\n"
+		"#ifdef do_close\n"
+		"#undef do_close\n"
+		"#endif\n"
+		"#ifdef New\n"
+		"#undef New\n"
+		"#endif\n"
+		"#include <stdint.h>\n"
+		"#include <sstream>\n"
+		"#include <google/protobuf/stubs/common.h>\n"
+		"#include <google/protobuf/io/zero_copy_stream.h>\n"
+		"#include \"$proto$.pb.h\"\n"
+		"\n"
+		"using namespace std;\n"
+		"\n"
+	);
+
+  // ZeroCopyOutputStream implementation (for improved pack() performance)
+
+  printer.Print(vars,
+		"class $proto$_OutputStream :\n"
+		"  public google::protobuf::io::ZeroCopyOutputStream {\n"
+		"public:\n"
+		"  explicit $proto$_OutputStream(SV * sv) :\n"
+		"  sv_(sv), len_(0) {}\n"
+		"  ~$proto$_OutputStream() {}\n"
+		"\n"
+		"  bool Next(void** data, int* size)\n"
+		"  {\n"
+		"    STRLEN nlen = len_ << 1;\n"
+		"\n"
+		"    if ( nlen < 16 ) nlen = 16;\n"
+		"    SvGROW(sv_, nlen);\n"
+		"    *data = SvEND(sv_) + len_;\n"
+		"    *size = SvLEN(sv_) - len_;\n"
+		"    len_ = nlen;\n"
+		"\n"
+		"    return true;\n"
+		"  }\n"
+		"\n"
+		"  void BackUp(int count)\n"
+		"  {\n"
+		"    SvCUR_set(sv_, SvLEN(sv_) - count);\n"
+		"  }\n"
+		"\n"
+		"  void Sync() {\n"
+		"    if ( SvCUR(sv_) == 0 ) {\n"
+		"      SvCUR_set(sv_, len_);\n"
+		"    }\n"
+		"  }\n"
+		"\n"
+		"  google::protobuf::int64 ByteCount() const\n"
+		"  {\n"
+		"    return (google::protobuf::int64)SvCUR(sv_);\n"
+		"  }\n"
+		"\n"
+		"private:\n"
+		"  SV * sv_;\n"
+		"  STRLEN len_;\n"
+		"\n"
+		"  GOOGLE_DISALLOW_EVIL_CONSTRUCTORS($proto$_OutputStream);\n"
+		"};\n"
+		"\n"
+		"\n"
+		);
+
+  // Typedefs, Statics, and XS packages
+
+  set<const Descriptor*> seen;
+
+	for ( int i = 0; i < file->message_type_count(); i++ ) {
+    const Descriptor* descriptor = file->message_type(i);
+	  GenerateFileXSTypedefs(descriptor->file(), printer, seen);
+	  printer.Print("\n\n");
+	  GenerateMessageStatics(descriptor, printer);
+	  printer.Print("\n\n");
+	}
+
+	printer.Print(vars,
+		"MODULE = $perlxs_package_module$::$proto_package_module$   "
+		"PACKAGE = $perlxs_package_module$::$proto_package_module$\n"
+		"\n"
+	);
+
+	for ( int i = 0; i < file->message_type_count(); i++ ) {
+    const Descriptor* descriptor = file->message_type(i);
+  	GenerateMessageXSPackage(descriptor, printer);
+	}
+
 }
 
 // Generate services
@@ -57,47 +270,46 @@ void PerlXSGenerator::GenerateServiceModule(const FileDescriptor* file,
   for (int i = 0; i < file->service_count(); ++i)
 	{
 		const ServiceDescriptor *service = file->service(i);
-    string filename = service->name() + ".pm";
+    string filename = "lib/" + PerlPackageFile(perlxs_package_) +
+											"/Service/" + PerlPackageFile(service->name()) + ".pm";
     scoped_ptr<io::ZeroCopyOutputStream> output(outdir->Open(filename));
-    io::Printer printer(output.get(), '*'); // '$' works well in the .xs file
+    io::Printer printer(output.get(), '*');
 
 		map<string, string> vars;
-	  vars["package"]   = PackageName(service->full_name(), service->name());
+		vars["perlxs_package"] = perlxs_package_;
+		vars["perlxs_file"]    = PerlPackageFile(perlxs_package_);
+		vars["proto"]          = cpp::StripProto(file->name());
+		vars["proto_package_module"]  = PerlPackageModule(file->name());
+		vars["perlxs_package_name"]   = PerlPackageName(perlxs_package_);
+		vars["perlxs_package_module"] = PerlPackageModule(perlxs_package_);
+		vars["service_module"] = PerlPackageModule(service->name());
 
 		printer.Print(vars,
-			"package *package*;\n"
+			"package *perlxs_package_module*::*proto_package_module*::Service::*service_module*;\n"
 			"use base Grpc::Client::BaseStub;\n"
+			"use *perlxs_package_module*::*proto_package_module*;\n"
 			"\n"
 		);
-
-		for (int j = 0; j < file->message_type_count(); ++j)
-		{
-				map<string, string> uvars;
-				uvars["module"] = MessageModuleName(file->message_type(j));
-				printer.Print(uvars,"use *module*;\n");
-		}
-
-		printer.Print("\n");
 
 		for (int k = 0; k < service->method_count(); ++k)
 		{
 			const MethodDescriptor *method = service->method(i);
 
 			map<string, string> mvars;
-			mvars["base"]        = service->full_name();
 			mvars["full_name"]   = method->full_name();
-			mvars["name"]        = method->name();
 			mvars["input_type"]  = method->input_type()->name();
-			mvars["output_type"] = method->output_type()->name();
+			mvars["name"]        = method->name();
 
 			mvars["unmarshall"] =
 						"    my $unmarshall = sub {\n"
 						"        my $data = shift;\n"
-						"        my $d = new "+PackageName(method->output_type()->full_name(), method->output_type()->name())+"();\n"
+						"        my $d = new " + PerlPackageModule(perlxs_package_) + "::" +
+														PerlPackageModule(file->name()) + "::" +
+														PerlPackageModule(method->output_type()->name())+"();\n"
 						"        if ($d->unpack($data)) { return $d; }\n"
-						"        warn \"failed unpacking protobuf data\";"
+						"        warn \"failed unpacking protobuf data\";\n"
 						"        return undef;\n"
-						"    }\n";
+						"    };\n";
 
 			if (method->client_streaming()) {
 				if(method->server_streaming()) {
@@ -191,180 +403,43 @@ void PerlXSGenerator::GenerateServiceModule(const FileDescriptor* file,
 }
 
 
-
-const string&
-PerlXSGenerator::GetVersionInfo() const
-{
-    return PackageString;
-}
-
-bool
-PerlXSGenerator::ProcessOption(const string& option)
-{
-  size_t equals;
-  bool   recognized = false;
-
-  equals = option.find_first_of('=');
-  if (equals != string::npos) {
-    std::string name = option.substr(0, equals);
-    std::string value;
-
-    if (option.length() > equals) {
-      value = option.substr(equals + 1);
-    }
-
-    // Right now, we only recognize the --perlxs-package option.
-    if (name == "--perlxs-package") {
-      perlxs_package_ = value;
-      recognized = true;
-    }
-  }
-
-  return recognized;
-}
-
 void
-PerlXSGenerator::GenerateMessageXS(const Descriptor* descriptor,
-				   OutputDirectory* outdir) const
+PerlXSGenerator::GenerateModule(const FileDescriptor* file,
+																OutputDirectory* outdir) const
 {
-  string filename = descriptor->name() + ".xs";
-  scoped_ptr<io::ZeroCopyOutputStream> output(outdir->Open(filename));
-  io::Printer printer(output.get(), '$'); // '$' works well in the .xs file
+	string filename = "lib/" + PerlPackageFile(perlxs_package_) + "/" +
+										PerlPackageFile(file->name())+ ".pm";
+	scoped_ptr<io::ZeroCopyOutputStream> output(outdir->Open(filename));
+	io::Printer printer(output.get(), '*');
 
-  string base = cpp::StripProto(descriptor->file()->name());
-
-  // Boilerplate at the top of the file.
-
-  printer.Print("#ifdef __cplusplus\n"
-		"extern \"C\" {\n"
-		"#endif\n"
-		"#include \"EXTERN.h\"\n"
-		"#include \"perl.h\"\n"
-		"#include \"XSUB.h\"\n"
-		"#ifdef __cplusplus\n"
-		"}\n"
-		"#endif\n"
-		"#ifdef do_open\n"
-		"#undef do_open\n"
-		"#endif\n"
-		"#ifdef do_close\n"
-		"#undef do_close\n"
-		"#endif\n"
-		"#ifdef New\n"
-		"#undef New\n"
-		"#endif\n"
-		"#include <stdint.h>\n"
-		"#include <sstream>\n"
-		"#include <google/protobuf/stubs/common.h>\n"
-		"#include <google/protobuf/io/zero_copy_stream.h>\n"
-		"#include \"$base$.pb.h\"\n"
-		"\n"
-		"using namespace std;\n"
-		"\n",
-		"base",
-		base);
-
-  // ZeroCopyOutputStream implementation (for improved pack() performance)
-
-  printer.Print("class $base$_OutputStream :\n"
-		"  public google::protobuf::io::ZeroCopyOutputStream {\n"
-		"public:\n"
-		"  explicit $base$_OutputStream(SV * sv) :\n"
-		"  sv_(sv), len_(0) {}\n"
-		"  ~$base$_OutputStream() {}\n"
-		"\n"
-		"  bool Next(void** data, int* size)\n"
-		"  {\n"
-		"    STRLEN nlen = len_ << 1;\n"
-		"\n"
-		"    if ( nlen < 16 ) nlen = 16;\n"
-		"    SvGROW(sv_, nlen);\n"
-		"    *data = SvEND(sv_) + len_;\n"
-		"    *size = SvLEN(sv_) - len_;\n"
-		"    len_ = nlen;\n"
-		"\n"
-		"    return true;\n"
-		"  }\n"
-		"\n"
-		"  void BackUp(int count)\n"
-		"  {\n"
-		"    SvCUR_set(sv_, SvLEN(sv_) - count);\n"
-		"  }\n"
-		"\n"
-		"  void Sync() {\n"
-		"    if ( SvCUR(sv_) == 0 ) {\n"
-		"      SvCUR_set(sv_, len_);\n"
-		"    }\n"
-		"  }\n"
-		"\n"
-		"  int64_t ByteCount() const\n"
-		"  {\n"
-		"    return (int64_t)SvCUR(sv_);\n"
-		"  }\n"
-		"\n"
-		"private:\n"
-		"  SV * sv_;\n"
-		"  STRLEN len_;\n"
-		"\n"
-		"  GOOGLE_DISALLOW_EVIL_CONSTRUCTORS($base$_OutputStream);\n"
-		"};\n"
-		"\n"
-		"\n",
-		"base",
-		base);
-
-  // Typedefs, Statics, and XS packages
-
-  set<const Descriptor*> seen;
-
-  GenerateFileXSTypedefs(descriptor->file(), printer, seen);
-
-  printer.Print("\n\n");
-
-  GenerateMessageStatics(descriptor, printer);
-
-  printer.Print("\n\n");
-
-  GenerateMessageXSPackage(descriptor, printer);
-}
-
-
-void
-PerlXSGenerator::GenerateMessageModule(const Descriptor* descriptor,
-				       OutputDirectory* outdir) const
-{
-  string filename = descriptor->name() + ".pm";
-  scoped_ptr<io::ZeroCopyOutputStream> output(outdir->Open(filename));
-  io::Printer printer(output.get(), '*'); // '*' works well in the .pm file
-
-  map<string, string> vars;
-
-  vars["package"] = MessageModuleName(descriptor);
-  vars["message"] = descriptor->full_name();
-  vars["name"]    = descriptor->name();
+	map<string, string> vars;
+	vars["perlxs_package"] = perlxs_package_;
+	vars["perlxs_file"]    = PerlPackageFile(perlxs_package_);
+	vars["proto"]          = cpp::StripProto(file->name());
+	vars["proto_package_module"]  = PerlPackageModule(file->name());
+	vars["perlxs_package_name"]   = PerlPackageName(perlxs_package_);
+	vars["perlxs_package_module"] = PerlPackageModule(perlxs_package_);
 
   printer.Print(vars,
-		"package *package*;\n"
+		"package *perlxs_package_module*::*proto_package_module*;\n"
 		"\n"
 		"use strict;\n"
 		"use warnings;\n"
-		"use vars qw(@ISA $AUTOLOAD $VERSION);\n"
+		"use XSLoader;\n"
 		"\n"
 		"$VERSION = '1.0';\n"
 		"\n"
-		"use Exporter;\n"
-		"\n"
-		"require DynaLoader;\n"
-		"require AutoLoader;\n"
-		"\n"
-		"@ISA = qw(DynaLoader Exporter);\n"
-		"\n"
-		"bootstrap *package* $VERSION;\n"
+		"XSLoader::load(__PACKAGE__, $VERSION );\n"
 		"\n"
 		"1;\n"
-		"\n"
-		"__END__\n"
 		"\n");
+
+/*
+		for ( int i = 0; i < file->message_type_count(); i++ ) {
+			const Descriptor* message_type = file->message_type(i);
+			GenerateMessagePOD(message_type, outdir);
+		}
+*/
 }
 
 
@@ -1718,15 +1793,8 @@ string
 PerlXSGenerator::PackageName(const string& name, const string& package) const
 {
   string output;
-
-  if (!perlxs_package_.empty()) {
-    output = StringReplace(name, package, perlxs_package_, false);
-    output = StringReplace(output, ".", "::", true);
-  } else {
-    output = StringReplace(name, ".", "::", true);
-  }
-
-  return output;
+	output = PerlPackageModule(perlxs_package_)+"::"+PerlPackageModule(name);
+	return output;
 }
 
 void
