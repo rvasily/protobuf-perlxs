@@ -63,7 +63,8 @@ class LIBPROTOC_EXPORT PerlXSGenerator : public CodeGenerator {
   string PerlPackageName(const string& name) const;
   string PerlPackageFile(const string& name) const;
   string PerlPackageModule(const string& name) const;
-
+  string StripLast(const string& name,const char seperator) const;
+  
   void GenerateMakefilePL(const FileDescriptor* file,
 													OutputDirectory* outdir) const;
 
@@ -107,7 +108,8 @@ class LIBPROTOC_EXPORT PerlXSGenerator : public CodeGenerator {
   void GenerateMessageStatics(const Descriptor* descriptor,
 			      io::Printer& printer) const;
 
-  void GenerateMessageXSPackage(const Descriptor* descriptor,
+  void GenerateMessageXSPackage(const FileDescriptor* file,
+        const Descriptor* descriptor,
 				io::Printer& printer) const;
 
   void GenerateTypemapInput(const Descriptor* descriptor,

@@ -1,7 +1,0 @@
-package Big;
-
-message Message {
-  repeated string blob = 1;
-}
-
-option optimize_for = SPEED;

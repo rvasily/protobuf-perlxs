@@ -51,6 +51,15 @@ PerlXSGenerator::PerlPackageName(const string& name) const
 	return basename;
 }
 
+// helper method to perl package name string to a name
+string
+PerlXSGenerator::StripLast(const string& name,const char seperator) const
+{
+	int lastindex = name.find_last_of(seperator);
+	if (lastindex) return name.substr(0,lastindex);
+	return name;
+}
+
 bool
 PerlXSGenerator::Generate(const FileDescriptor* file,
 			  const string& parameter,
@@ -133,7 +142,7 @@ void PerlXSGenerator::GenerateMakefilePL(const FileDescriptor* file,
 			"              'CCFLAGS'       => '-fno-strict-aliasing',\n"
 			"              'OBJECT'        => '$(O_FILES)',\n"
 			"              'INC'           => '-I.',\n"
-			"              'LIBS'          => [' -lprotobuf'],\n"
+			"              'LIBS'          => ['-L/usr/local/lib -lprotobuf'],\n"
 			"              'XSOPT'         => '-C++',\n"
 			"             );\n"
 			"\n"
@@ -258,7 +267,7 @@ PerlXSGenerator::GenerateXS(const FileDescriptor* file,
 
 	for ( int i = 0; i < file->message_type_count(); i++ ) {
     const Descriptor* descriptor = file->message_type(i);
-  	GenerateMessageXSPackage(descriptor, printer);
+  	GenerateMessageXSPackage(file, descriptor, printer);
 	}
 
 }
@@ -271,6 +280,7 @@ void PerlXSGenerator::GenerateServiceModule(const FileDescriptor* file,
 	{
 		const ServiceDescriptor *service = file->service(i);
     string filename = "lib/" + PerlPackageFile(perlxs_package_) +
+											"/" + PerlPackageFile(file->name()) + "/" +
 											"/Service/" + PerlPackageFile(service->name()) + ".pm";
     scoped_ptr<io::ZeroCopyOutputStream> output(outdir->Open(filename));
     io::Printer printer(output.get(), '*');
@@ -286,7 +296,7 @@ void PerlXSGenerator::GenerateServiceModule(const FileDescriptor* file,
 
 		printer.Print(vars,
 			"package *perlxs_package_module*::*proto_package_module*::Service::*service_module*;\n"
-			"use base Grpc::Client::BaseStub;\n"
+			"use base qw(Grpc::Client::BaseStub);\n"
 			"use *perlxs_package_module*::*proto_package_module*;\n"
 			"\n"
 		);
@@ -299,6 +309,7 @@ void PerlXSGenerator::GenerateServiceModule(const FileDescriptor* file,
 			mvars["full_name"]   = method->full_name();
 			mvars["input_type"]  = method->input_type()->name();
 			mvars["name"]        = method->name();
+			mvars["service"]     = StripLast(method->full_name(),'.');
 
 			mvars["unmarshall"] =
 						"    my $unmarshall = sub {\n"
@@ -324,7 +335,7 @@ void PerlXSGenerator::GenerateServiceModule(const FileDescriptor* file,
 						"*unmarshall*"
 						"\n"
 						"    return $self->_bidiRequest(\n"
-						" 											method      => \"*full_name*/*name*\",\n"
+						" 											method      => \"/*service*/*name*\",\n"
 						"                       deserialize => $unmarshall,\n"
 						" 											metadata    => $metadata,\n"
 					  "                       options     => $options);\n"
@@ -343,7 +354,7 @@ void PerlXSGenerator::GenerateServiceModule(const FileDescriptor* file,
 						"*unmarshall*"
 						"\n"
 						"    return $self->_clientStreamRequest(\n"
-						"                       method      => \"*full_name*/*name*\",\n"
+						"                       method      => \"/*service*/*name*\",\n"
 						"                       deserialize => $unmarshall,\n"
 						"                       metadata    => $metadata,\n"
 					  "                       options     => $options);\n"
@@ -365,7 +376,7 @@ void PerlXSGenerator::GenerateServiceModule(const FileDescriptor* file,
 						"*unmarshall*"
 						"\n"
 						"    return $self->_serverStreamRequest(\n"
-						"                       method      => \"*full_name*/*name*\",\n"
+						"                       method      => \"/*service*/*name*\",\n"
 						"                       deserialize => $unmarshall,\n"
 						"                       argument    => $argument,\n"
 						"                       metadata    => $metadata,\n"
@@ -386,7 +397,7 @@ void PerlXSGenerator::GenerateServiceModule(const FileDescriptor* file,
 						"*unmarshall*"
 						"\n"
 						"    return $self->_simpleRequest(\n"
-						"                       method      => \"*full_name*/*name*\",\n"
+						"                       method      => \"/*service*/*name*\",\n"
 						"                       deserialize => $unmarshall,\n"
 						"                       argument    => $argument,\n"
 						"                       metadata    => $metadata,\n"
@@ -427,7 +438,7 @@ PerlXSGenerator::GenerateModule(const FileDescriptor* file,
 		"use warnings;\n"
 		"use XSLoader;\n"
 		"\n"
-		"$VERSION = '1.0';\n"
+		"our $VERSION = '1.0';\n"
 		"\n"
 		"XSLoader::load(__PACKAGE__, $VERSION );\n"
 		"\n"
@@ -1613,11 +1624,12 @@ PerlXSGenerator::GenerateMessageXSCommonMethods(const Descriptor* descriptor,
 }
 
 void
-PerlXSGenerator::GenerateMessageXSPackage(const Descriptor* descriptor,
+PerlXSGenerator::GenerateMessageXSPackage(const FileDescriptor* file,
+						const Descriptor* descriptor,
 					  io::Printer& printer) const
 {
   for ( int i = 0; i < descriptor->nested_type_count(); i++ ) {
-    GenerateMessageXSPackage(descriptor->nested_type(i), printer);
+    GenerateMessageXSPackage(file, descriptor->nested_type(i), printer);
   }
 
   map<string, string> vars;
@@ -1632,8 +1644,16 @@ PerlXSGenerator::GenerateMessageXSPackage(const Descriptor* descriptor,
   vars["package"]     = pn;
   vars["underscores"] = un;
 
+	vars["perlxs_package"] = perlxs_package_;
+	vars["perlxs_file"]    = PerlPackageFile(perlxs_package_);
+	vars["proto"]          = cpp::StripProto(file->name());
+	vars["proto_package_module"]  = PerlPackageModule(file->name());
+	vars["perlxs_package_name"]   = PerlPackageName(perlxs_package_);
+	vars["perlxs_package_module"] = PerlPackageModule(perlxs_package_);
+
+
   printer.Print(vars,
-		"MODULE = $module$ PACKAGE = $package$\n"
+		"MODULE = $perlxs_package_module$::$proto_package_module$ PACKAGE = $package$\n"
 		"PROTOTYPES: ENABLE\n"
 		"\n"
 		"\n");
