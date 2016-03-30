@@ -36,7 +36,7 @@ string
 PerlXSGenerator::PerlPackageFile(const string& name) const
 {
   string basename = cpp::StripProto(name);
-	basename = StringReplace(basename, "_", "-", true);
+	basename = StringReplace(basename, "-", "_", true);
 	basename = StringReplace(basename, "::", "/", true);
 	return basename;
 }
@@ -129,12 +129,15 @@ void PerlXSGenerator::GenerateMakefilePL(const FileDescriptor* file,
 		vars["proto_package_file"]    = PerlPackageFile(file->name());
 		vars["perlxs_package_name"]   = PerlPackageName(perlxs_package_);
 		vars["perlxs_package_module"] = PerlPackageModule(perlxs_package_);
+		vars["package_module"] = PerlPackageModule(file->package());
+		vars["package_file"]   = PerlPackageFile(file->package());
+
 
 		printer.Print(vars,
 			"use ExtUtils::MakeMaker;\n"
 			"WriteMakefile(\n"
-			"              'NAME'          => '*perlxs_package_name*::*proto_package_module*',\n"
-			"              'VERSION_FROM'  => 'lib/*perlxs_file*/*proto_package_file*.pm',\n"
+			"              'NAME'          => '*perlxs_package_name*::*package_module*',\n"
+			"              'VERSION_FROM'  => 'lib/*perlxs_file*/*package_file*.pm',\n"
 			"              'OPTIMIZE'      => '-O2 -Wall',\n"
 			"              'CC'            => 'g++',\n"
 			"              'LD'            => '$(CC)',\n"
@@ -166,6 +169,8 @@ PerlXSGenerator::GenerateXS(const FileDescriptor* file,
 	vars["proto_package_module"]  = PerlPackageModule(file->name());
 	vars["perlxs_package_name"]   = PerlPackageName(perlxs_package_);
 	vars["perlxs_package_module"] = PerlPackageModule(perlxs_package_);
+	vars["package_module"] = PerlPackageModule(file->package());
+	vars["package_file"]   = PerlPackageFile(file->package());
 
   // Boilerplate at the top of the file.
 
@@ -260,8 +265,8 @@ PerlXSGenerator::GenerateXS(const FileDescriptor* file,
 	}
 
 	printer.Print(vars,
-		"MODULE = $perlxs_package_module$::$proto_package_module$   "
-		"PACKAGE = $perlxs_package_module$::$proto_package_module$\n"
+		"MODULE = $perlxs_package_module$::$package_module$   "
+		"PACKAGE = $perlxs_package_module$::$package_module$\n"
 		"\n"
 	);
 
@@ -280,7 +285,7 @@ void PerlXSGenerator::GenerateServiceModule(const FileDescriptor* file,
 	{
 		const ServiceDescriptor *service = file->service(i);
     string filename = "lib/" + PerlPackageFile(perlxs_package_) +
-											"/" + PerlPackageFile(file->name()) + "/" +
+											"/" + PerlPackageFile(file->package()) + "/" +
 											"/Service/" + PerlPackageFile(service->name()) + ".pm";
     scoped_ptr<io::ZeroCopyOutputStream> output(outdir->Open(filename));
     io::Printer printer(output.get(), '*');
@@ -293,17 +298,19 @@ void PerlXSGenerator::GenerateServiceModule(const FileDescriptor* file,
 		vars["perlxs_package_name"]   = PerlPackageName(perlxs_package_);
 		vars["perlxs_package_module"] = PerlPackageModule(perlxs_package_);
 		vars["service_module"] = PerlPackageModule(service->name());
+		vars["package_module"] = PerlPackageModule(file->package());
+		vars["package_file"]   = PerlPackageFile(file->package());
 
 		printer.Print(vars,
-			"package *perlxs_package_module*::*proto_package_module*::Service::*service_module*;\n"
+			"package *perlxs_package_module*::*package_module*::Service::*service_module*;\n"
 			"use base qw(Grpc::Client::BaseStub);\n"
-			"use *perlxs_package_module*::*proto_package_module*;\n"
+			"use *perlxs_package_module*::*package_module*;\n"
 			"\n"
 		);
 
 		for (int k = 0; k < service->method_count(); ++k)
 		{
-			const MethodDescriptor *method = service->method(i);
+			const MethodDescriptor *method = service->method(k);
 
 			map<string, string> mvars;
 			mvars["full_name"]   = method->full_name();
@@ -315,7 +322,7 @@ void PerlXSGenerator::GenerateServiceModule(const FileDescriptor* file,
 						"    my $unmarshall = sub {\n"
 						"        my $data = shift;\n"
 						"        my $d = new " + PerlPackageModule(perlxs_package_) + "::" +
-														PerlPackageModule(file->name()) + "::" +
+														PerlPackageModule(file->package()) + "::" +
 														PerlPackageModule(method->output_type()->name())+"();\n"
 						"        if ($d->unpack($data)) { return $d; }\n"
 						"        warn \"failed unpacking protobuf data\";\n"
@@ -335,9 +342,9 @@ void PerlXSGenerator::GenerateServiceModule(const FileDescriptor* file,
 						"*unmarshall*"
 						"\n"
 						"    return $self->_bidiRequest(\n"
-						" 											method      => \"/*service*/*name*\",\n"
+						"                       method      => \"/*service*/*name*\",\n"
 						"                       deserialize => $unmarshall,\n"
-						" 											metadata    => $metadata,\n"
+						"                       metadata    => $metadata,\n"
 					  "                       options     => $options);\n"
 						"}\n"
 						"\n"
@@ -419,7 +426,7 @@ PerlXSGenerator::GenerateModule(const FileDescriptor* file,
 																OutputDirectory* outdir) const
 {
 	string filename = "lib/" + PerlPackageFile(perlxs_package_) + "/" +
-										PerlPackageFile(file->name())+ ".pm";
+										PerlPackageFile(file->package())+ ".pm";
 	scoped_ptr<io::ZeroCopyOutputStream> output(outdir->Open(filename));
 	io::Printer printer(output.get(), '*');
 
@@ -430,9 +437,11 @@ PerlXSGenerator::GenerateModule(const FileDescriptor* file,
 	vars["proto_package_module"]  = PerlPackageModule(file->name());
 	vars["perlxs_package_name"]   = PerlPackageName(perlxs_package_);
 	vars["perlxs_package_module"] = PerlPackageModule(perlxs_package_);
+	vars["package_module"] = PerlPackageModule(file->package());
+	vars["package_file"]   = PerlPackageFile(file->package());
 
   printer.Print(vars,
-		"package *perlxs_package_module*::*proto_package_module*;\n"
+		"package *perlxs_package_module*::*package_module*;\n"
 		"\n"
 		"use strict;\n"
 		"use warnings;\n"
@@ -1650,10 +1659,11 @@ PerlXSGenerator::GenerateMessageXSPackage(const FileDescriptor* file,
 	vars["proto_package_module"]  = PerlPackageModule(file->name());
 	vars["perlxs_package_name"]   = PerlPackageName(perlxs_package_);
 	vars["perlxs_package_module"] = PerlPackageModule(perlxs_package_);
-
+	vars["package_module"] = PerlPackageModule(file->package());
+	vars["package_file"]   = PerlPackageFile(file->package());
 
   printer.Print(vars,
-		"MODULE = $perlxs_package_module$::$proto_package_module$ PACKAGE = $package$\n"
+		"MODULE = $perlxs_package_module$::$package_module$ PACKAGE = $package$\n"
 		"PROTOTYPES: ENABLE\n"
 		"\n"
 		"\n");
