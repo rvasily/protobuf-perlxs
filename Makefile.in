@@ -32,13 +32,6 @@ POST_UNINSTALL = :
 subdir = .
 DIST_COMMON = README $(am__configure_deps) $(srcdir)/Makefile.am \
 	$(srcdir)/Makefile.in $(top_srcdir)/configure \
-	$(top_srcdir)/examples/big/Makefile.PL.in \
-	$(top_srcdir)/examples/embedded/Makefile.PL.in \
-	$(top_srcdir)/examples/error/Makefile.PL.in \
-	$(top_srcdir)/examples/package/Makefile.PL.in \
-	$(top_srcdir)/examples/simple/Makefile.PL.in \
-	$(top_srcdir)/examples/string_bytes/Makefile.PL.in \
-	$(top_srcdir)/examples/types/Makefile.PL.in \
 	$(top_srcdir)/src/google/protobuf/compiler/perlxs/perlxs_config.h.in \
 	AUTHORS COPYING ChangeLog INSTALL NEWS TODO depcomp install-sh \
 	missing
@@ -50,11 +43,7 @@ am__CONFIG_DISTCLEAN_FILES = config.status config.cache config.log \
  configure.lineno config.status.lineno
 mkinstalldirs = $(install_sh) -d
 CONFIG_CLEAN_FILES =  \
-	src/google/protobuf/compiler/perlxs/perlxs_config.h \
-	examples/big/Makefile.PL examples/embedded/Makefile.PL \
-	examples/error/Makefile.PL examples/package/Makefile.PL \
-	examples/simple/Makefile.PL examples/string_bytes/Makefile.PL \
-	examples/types/Makefile.PL
+	src/google/protobuf/compiler/perlxs/perlxs_config.h 
 SOURCES =
 DIST_SOURCES =
 RECURSIVE_TARGETS = all-recursive check-recursive dvi-recursive \
@@ -170,39 +159,7 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 SUBDIRS = src
-EXTRA_DIST = \
-	examples/README \
-	examples/big/Makefile.PL.in \
-	examples/big/big.proto \
-	examples/big/README \
-	examples/big/test.pl \
-	examples/embedded/Makefile.PL.in \
-	examples/embedded/error.proto \
-	examples/embedded/README \
-	examples/embedded/test.pl \
-	examples/error/Makefile.PL.in \
-	examples/error/error.proto \
-	examples/error/README \
-	examples/error/test.pl \
-	examples/package/Makefile.PL.in \
-	examples/package/Messages.pm \
-	examples/package/Messages.xs \
-	examples/package/Messages \
-	examples/package/messages.proto \
-	examples/package/README \
-	examples/package/test.pl \
-	examples/simple/Makefile.PL.in \
-	examples/simple/person.proto \
-	examples/simple/README \
-	examples/simple/test.pl \
-	examples/string_bytes/Makefile.PL.in \
-	examples/string_bytes/string_bytes.proto \
-	examples/string_bytes/README \
-	examples/string_bytes/test.pl \
-	examples/types/Makefile.PL.in \
-	examples/types/types.proto \
-	examples/types/README \
-	examples/types/test.pl
+EXTRA_DIST =
 
 all: all-recursive
 
@@ -241,20 +198,6 @@ $(top_srcdir)/configure:  $(am__configure_deps)
 $(ACLOCAL_M4):  $(am__aclocal_m4_deps)
 	cd $(srcdir) && $(ACLOCAL) $(ACLOCAL_AMFLAGS)
 src/google/protobuf/compiler/perlxs/perlxs_config.h: $(top_builddir)/config.status $(top_srcdir)/src/google/protobuf/compiler/perlxs/perlxs_config.h.in
-	cd $(top_builddir) && $(SHELL) ./config.status $@
-examples/big/Makefile.PL: $(top_builddir)/config.status $(top_srcdir)/examples/big/Makefile.PL.in
-	cd $(top_builddir) && $(SHELL) ./config.status $@
-examples/embedded/Makefile.PL: $(top_builddir)/config.status $(top_srcdir)/examples/embedded/Makefile.PL.in
-	cd $(top_builddir) && $(SHELL) ./config.status $@
-examples/error/Makefile.PL: $(top_builddir)/config.status $(top_srcdir)/examples/error/Makefile.PL.in
-	cd $(top_builddir) && $(SHELL) ./config.status $@
-examples/package/Makefile.PL: $(top_builddir)/config.status $(top_srcdir)/examples/package/Makefile.PL.in
-	cd $(top_builddir) && $(SHELL) ./config.status $@
-examples/simple/Makefile.PL: $(top_builddir)/config.status $(top_srcdir)/examples/simple/Makefile.PL.in
-	cd $(top_builddir) && $(SHELL) ./config.status $@
-examples/string_bytes/Makefile.PL: $(top_builddir)/config.status $(top_srcdir)/examples/string_bytes/Makefile.PL.in
-	cd $(top_builddir) && $(SHELL) ./config.status $@
-examples/types/Makefile.PL: $(top_builddir)/config.status $(top_srcdir)/examples/types/Makefile.PL.in
 	cd $(top_builddir) && $(SHELL) ./config.status $@
 
 # This directory's subdirectories are mostly independent; you can cd

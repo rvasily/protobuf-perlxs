@@ -25,13 +25,6 @@ AC_CONFIG_FILES([
 Makefile
 src/Makefile
 src/google/protobuf/compiler/perlxs/perlxs_config.h
-examples/big/Makefile.PL
-examples/embedded/Makefile.PL
-examples/error/Makefile.PL
-examples/package/Makefile.PL
-examples/simple/Makefile.PL
-examples/string_bytes/Makefile.PL
-examples/types/Makefile.PL
 ])
 AC_OUTPUT
 
