@@ -1210,9 +1210,6 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
 		  "  CODE:\n");
     break;
   default:
-
-  	std::cout << " field->name(): " << field->name() << " type: " << type << " fieldtype: " << fieldtype << std::endl;
-
     vars["value"] = "svVAL";
     break;
   }
