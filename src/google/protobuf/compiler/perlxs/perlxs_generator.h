@@ -165,6 +165,7 @@ class LIBPROTOC_EXPORT PerlXSGenerator : public CodeGenerator {
  private:
   // --perlxs-package option (if given)
   std::string perlxs_package_;
+  std::string grpc_base_;
 };
 
 }  // namespace perlxs

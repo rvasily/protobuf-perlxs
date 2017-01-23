@@ -17,6 +17,7 @@ namespace perlxs {
 
 PerlXSGenerator::PerlXSGenerator() {
 	perlxs_package_ = "ProtobufXS"; // default perlxs_package name
+	grpc_base_ = "Grpc::Client::BaseStub"; // default grpc_base name in service module
 }
 PerlXSGenerator::~PerlXSGenerator() {}
 
@@ -38,6 +39,7 @@ PerlXSGenerator::PerlPackageFile(const string& name) const
   string basename = cpp::StripProto(name);
 	basename = StringReplace(basename, "-", "_", true);
 	basename = StringReplace(basename, "::", "/", true);
+	basename = StringReplace(basename, ".", "/", true);
 	return basename;
 }
 
@@ -106,6 +108,11 @@ PerlXSGenerator::ProcessOption(const string& option)
     // Right now, we only recognize the --perlxs-package option.
     if (name == "--perlxs-package") {
       perlxs_package_ = value;
+      recognized = true;
+    }
+
+    if (name == "--grpc-base") {
+      grpc_base_ = value;
       recognized = true;
     }
   }
@@ -301,9 +308,11 @@ void PerlXSGenerator::GenerateServiceModule(const FileDescriptor* file,
 		vars["package_module"] = PerlPackageModule(file->package());
 		vars["package_file"]   = PerlPackageFile(file->package());
 
+		vars["grpc_base"]   = grpc_base_;
+
 		printer.Print(vars,
 			"package *perlxs_package_module*::*package_module*::Service::*service_module*;\n"
-			"use base qw(Grpc::Client::BaseStub);\n"
+			"use base qw(*grpc_base*);\n"
 			"use *perlxs_package_module*::*package_module*;\n"
 			"\n"
 		);
@@ -1201,6 +1210,9 @@ PerlXSGenerator::GenerateMessageXSFieldAccessors(const FieldDescriptor* field,
 		  "  CODE:\n");
     break;
   default:
+
+  	std::cout << " field->name(): " << field->name() << " type: " << type << " fieldtype: " << fieldtype << std::endl;
+
     vars["value"] = "svVAL";
     break;
   }
